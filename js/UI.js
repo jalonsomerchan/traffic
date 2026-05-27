@@ -1,5 +1,6 @@
 import { ROAD_TYPES, SPEED_LIMITS } from "./RoadManager.js";
 import { getRoadFootprintCost } from "./RoadFootprints.js";
+import { getTreeClearCost, TREE_TOOL } from "./Trees.js";
 
 const MESSAGES = {
   es: {
@@ -14,13 +15,14 @@ const MESSAGES = {
     vehicles: "Vehículos",
     housing: "Habitaciones",
     roads: "Vías",
+    trees: "Árboles",
     map: "Mapa",
     month: "Mes",
-    nextMonth: "Siguiente cobro",
+    nextMonth: "Cobro",
     discontent: "Descontento",
     balance: "Balance mensual",
-    hideBalance: "Ocultar balance",
-    showBalance: "Mostrar balance",
+    hideBalance: "Minimizar",
+    showBalance: "Balance",
     populationIncome: "Impuestos de habitantes",
     tripIncome: "Tasas por uso de vías",
     discontentPenalty: "Pérdida por descontento",
@@ -31,7 +33,10 @@ const MESSAGES = {
     tripsSuffix: "viajes",
     roadsSuffix: "vías",
     repairsSuffix: "cortes",
-    tool: "Herramienta",
+    tool: "Herramientas",
+    roadsGroup: "Carreteras",
+    actionsGroup: "Acciones",
+    viewGroup: "Vista y tiempo",
     dirt: "Tierra",
     gravelRoad: "Grava",
     concretePath: "Cemento",
@@ -48,6 +53,7 @@ const MESSAGES = {
     highway: "Autopista",
     megaHighway: "Mega autopista",
     roundabout: "Rotonda",
+    clearTree: "Talar árbol",
     light: "Semáforo",
     repair: "Reparar",
     closeRoad: "Cortar tráfico",
@@ -71,9 +77,9 @@ const MESSAGES = {
     expand: "Ampliar mapa",
     zoomIn: "Zoom +",
     zoomOut: "Zoom -",
-    save: "Guardar local",
-    download: "Exportar JSON",
-    load: "Cargar local",
+    save: "Guardar",
+    download: "Exportar",
+    load: "Cargar",
   },
   en: {
     title: "Isometric traffic",
@@ -87,13 +93,14 @@ const MESSAGES = {
     vehicles: "Vehicles",
     housing: "Rooms",
     roads: "Roads",
+    trees: "Trees",
     map: "Map",
     month: "Month",
-    nextMonth: "Next payout",
+    nextMonth: "Payout",
     discontent: "Discontent",
     balance: "Monthly balance",
-    hideBalance: "Hide balance",
-    showBalance: "Show balance",
+    hideBalance: "Minimize",
+    showBalance: "Balance",
     populationIncome: "Resident taxes",
     tripIncome: "Road usage fees",
     discontentPenalty: "Discontent loss",
@@ -104,7 +111,10 @@ const MESSAGES = {
     tripsSuffix: "trips",
     roadsSuffix: "roads",
     repairsSuffix: "closures",
-    tool: "Tool",
+    tool: "Tools",
+    roadsGroup: "Roads",
+    actionsGroup: "Actions",
+    viewGroup: "View and time",
     dirt: "Dirt",
     gravelRoad: "Gravel",
     concretePath: "Concrete",
@@ -121,6 +131,7 @@ const MESSAGES = {
     highway: "Highway",
     megaHighway: "Mega highway",
     roundabout: "Roundabout",
+    clearTree: "Cut tree",
     light: "Signal",
     repair: "Repair",
     closeRoad: "Close traffic",
@@ -144,9 +155,9 @@ const MESSAGES = {
     expand: "Expand map",
     zoomIn: "Zoom +",
     zoomOut: "Zoom -",
-    save: "Save local",
-    download: "Export JSON",
-    load: "Load local",
+    save: "Save",
+    download: "Export",
+    load: "Load",
   },
 };
 
@@ -186,6 +197,7 @@ const TOOL_ICONS = {
   highway: "🛣️",
   megaHighway: "🚀",
   roundabout: "🔄",
+  clearTree: "🪓",
   light: "🚦",
   removeLight: "🚫",
   repair: "🔧",
@@ -212,10 +224,6 @@ const TOOL_ICONS = {
 };
 
 export class UI {
-  /**
-   * HUD accesible y traducible sin dependencias.
-   * Expone acciones semánticas al bucle principal mediante callbacks.
-   */
   constructor(root, callbacks) {
     this.root = root;
     this.callbacks = callbacks;
@@ -228,7 +236,6 @@ export class UI {
     this.render();
   }
 
-  /** Genera el HUD completo desde diccionarios de idioma ES/EN. */
   render() {
     const t = this.t.bind(this);
     this.root.innerHTML = `
@@ -252,59 +259,73 @@ export class UI {
           <button type="button" data-action="close-about">${t("close")}</button>
         </div>
       </section>
-      <h1>${t("title")}</h1>
       <section class="hud__stats" aria-live="polite">
-        ${this.statRow(t("budget"), "$0", "budget")}
         ${this.statRow(t("vehicles"), "0", "vehicles")}
         ${this.statRow(t("housing"), "0", "housing")}
         ${this.statRow(t("roads"), "0", "roads")}
+        ${this.statRow(t("trees"), "0", "trees")}
         ${this.statRow(t("map"), "28 x 28", "map")}
         ${this.statRow(t("month"), "1", "month")}
         ${this.statRow(t("nextMonth"), "0%", "monthProgress")}
         ${this.statRow(t("discontent"), "0%", "discontent")}
       </section>
-      <button type="button" class="balance-toggle" data-action="toggle-balance" aria-expanded="true">📊 ${t("hideBalance")}</button>
-      <section class="statement" data-statement aria-live="polite"></section>
+      <section class="budget-modal" data-budget-modal>
+        <button type="button" class="balance-toggle" data-action="toggle-balance" aria-expanded="true">
+          <span>💰 ${t("budget")}: <strong data-stat="budget">$0</strong></span>
+          <small data-balance-toggle-label>${t("hideBalance")}</small>
+        </button>
+        <section class="statement" data-statement aria-live="polite"></section>
+      </section>
       <section class="hud__tools" aria-label="${t("tool")}">
-        <div class="tool-palette">
-          ${ROAD_TOOL_ORDER.map((tool) => this.toolButton(tool, t(tool), getRoadFootprintCost(tool))).join("")}
+        <div class="toolbar-group toolbar-group--roads">
+          <strong>${t("roadsGroup")}</strong>
+          <div class="tool-palette">
+            ${ROAD_TOOL_ORDER.map((tool) => this.toolButton(tool, t(tool), getRoadFootprintCost(tool))).join("")}
+          </div>
         </div>
-        <div class="hud__grid hud__grid--compact">
-          ${this.toolButton("light", t("light"))}
-          ${this.toolButton("removeLight", t("removeLight"))}
-          ${this.toolButton("repair", t("repair"), "danger")}
-          ${this.toolButton("closeRoad", t("closeRoad"), "danger")}
-          ${this.toolButton("removeRoad", t("removeRoad"), "danger")}
-          ${this.toolButton("demolish", t("demolish"), "danger")}
-          ${this.toolButton("direction", t("direction"))}
-          ${this.toolButton("transparentBuildings", t("transparentBuildings"))}
+        <div class="toolbar-group">
+          <strong>${t("actionsGroup")}</strong>
+          <div class="hud__grid hud__grid--compact">
+            ${this.toolButton(TREE_TOOL, t("clearTree"), getTreeClearCost(), "danger")}
+            ${this.toolButton("light", t("light"))}
+            ${this.toolButton("removeLight", t("removeLight"))}
+            ${this.toolButton("repair", t("repair"), "danger")}
+            ${this.toolButton("closeRoad", t("closeRoad"), "danger")}
+            ${this.toolButton("removeRoad", t("removeRoad"), "danger")}
+            ${this.toolButton("demolish", t("demolish"), "danger")}
+            ${this.toolButton("direction", t("direction"))}
+            ${this.toolButton("transparentBuildings", t("transparentBuildings"))}
+          </div>
         </div>
-        <div class="view-control" aria-label="${t("viewMode")}">
-          ${this.viewButton("normal", TOOL_ICONS.viewNormal, t("viewNormal"))}
-          ${this.viewButton("traffic", TOOL_ICONS.viewTraffic, t("viewTraffic"))}
-          ${this.viewButton("health", TOOL_ICONS.viewHealth, t("viewHealth"))}
-          ${this.viewButton("type", TOOL_ICONS.viewType, t("viewType"))}
-          ${this.viewButton("speed", TOOL_ICONS.viewSpeed, t("viewSpeed"))}
-        </div>
-        <label class="speed-control">
-          <span>${t("speed")}</span>
-          <select data-action="speed-limit">
-            ${SPEED_LIMITS.map((limit) => `<option value="${limit}" ${limit === this.speedLimit ? "selected" : ""}>${limit}</option>`).join("")}
-          </select>
-        </label>
-        <div class="time-control" aria-label="${t("time")}">
-          ${this.timeButton(0, TOOL_ICONS.pause, t("pause"))}
-          ${this.timeButton(0.5, TOOL_ICONS.slow, t("slow"))}
-          ${this.timeButton(1, TOOL_ICONS.normal, t("normal"))}
-          ${this.timeButton(2.5, TOOL_ICONS.fast, t("fast"))}
-        </div>
-        <div class="hud__grid">
-          <button type="button" data-action="zoom-in">${this.iconLabel(TOOL_ICONS.zoomIn, t("zoomIn"))}</button>
-          <button type="button" data-action="zoom-out">${this.iconLabel(TOOL_ICONS.zoomOut, t("zoomOut"))}</button>
-          <button type="button" data-action="expand">${this.iconLabel(TOOL_ICONS.expand, t("expand"))}</button>
-          <button type="button" data-action="save">${this.iconLabel(TOOL_ICONS.save, t("save"))}</button>
-          <button type="button" data-action="download">${this.iconLabel(TOOL_ICONS.download, t("download"))}</button>
-          <button type="button" data-action="load">${this.iconLabel(TOOL_ICONS.load, t("load"))}</button>
+        <div class="toolbar-group toolbar-group--view">
+          <strong>${t("viewGroup")}</strong>
+          <div class="view-control" aria-label="${t("viewMode")}">
+            ${this.viewButton("normal", TOOL_ICONS.viewNormal, t("viewNormal"))}
+            ${this.viewButton("traffic", TOOL_ICONS.viewTraffic, t("viewTraffic"))}
+            ${this.viewButton("health", TOOL_ICONS.viewHealth, t("viewHealth"))}
+            ${this.viewButton("type", TOOL_ICONS.viewType, t("viewType"))}
+            ${this.viewButton("speed", TOOL_ICONS.viewSpeed, t("viewSpeed"))}
+          </div>
+          <label class="speed-control">
+            <span>${t("speed")}</span>
+            <select data-action="speed-limit">
+              ${SPEED_LIMITS.map((limit) => `<option value="${limit}" ${limit === this.speedLimit ? "selected" : ""}>${limit}</option>`).join("")}
+            </select>
+          </label>
+          <div class="time-control" aria-label="${t("time")}">
+            ${this.timeButton(0, TOOL_ICONS.pause, t("pause"))}
+            ${this.timeButton(0.5, TOOL_ICONS.slow, t("slow"))}
+            ${this.timeButton(1, TOOL_ICONS.normal, t("normal"))}
+            ${this.timeButton(2.5, TOOL_ICONS.fast, t("fast"))}
+          </div>
+          <div class="hud__grid hud__grid--utility">
+            <button type="button" data-action="zoom-in">${this.iconLabel(TOOL_ICONS.zoomIn, t("zoomIn"))}</button>
+            <button type="button" data-action="zoom-out">${this.iconLabel(TOOL_ICONS.zoomOut, t("zoomOut"))}</button>
+            <button type="button" data-action="expand">${this.iconLabel(TOOL_ICONS.expand, t("expand"))}</button>
+            <button type="button" data-action="save">${this.iconLabel(TOOL_ICONS.save, t("save"))}</button>
+            <button type="button" data-action="download">${this.iconLabel(TOOL_ICONS.download, t("download"))}</button>
+            <button type="button" data-action="load">${this.iconLabel(TOOL_ICONS.load, t("load"))}</button>
+          </div>
         </div>
       </section>
     `;
@@ -312,12 +333,12 @@ export class UI {
     this.root.addEventListener("change", (event) => this.handleChange(event));
   }
 
-  /** Refresca métricas sin reconstruir todo el DOM. */
-  update({ budget, vehicles, housing, roads, map, month, monthProgress, discontent, statement }) {
+  update({ budget, vehicles, housing, roads, trees, map, month, monthProgress, discontent, statement }) {
     this.root.querySelector('[data-stat="budget"]').textContent = `$${Math.floor(budget)}`;
     this.root.querySelector('[data-stat="vehicles"]').textContent = vehicles;
     this.root.querySelector('[data-stat="housing"]').textContent = housing;
     this.root.querySelector('[data-stat="roads"]').textContent = roads;
+    this.root.querySelector('[data-stat="trees"]').textContent = trees ?? 0;
     this.root.querySelector('[data-stat="map"]').textContent = map;
     this.root.querySelector('[data-stat="month"]').textContent = month;
     this.root.querySelector('[data-stat="monthProgress"]').textContent = `${Math.floor(monthProgress * 100)}%`;
@@ -355,7 +376,6 @@ export class UI {
     `;
   }
 
-  /** Gestiona herramientas, vistas y guardado/carga desde botones. */
   handleClick(event) {
     const button = event.target.closest("button");
     if (!button) return;
@@ -423,12 +443,12 @@ export class UI {
     this.balanceVisible = !this.balanceVisible;
     const button = this.root.querySelector('[data-action="toggle-balance"]');
     const panel = this.root.querySelector("[data-statement]");
+    const label = this.root.querySelector("[data-balance-toggle-label]");
     button.setAttribute("aria-expanded", String(this.balanceVisible));
-    button.textContent = `📊 ${this.t(this.balanceVisible ? "hideBalance" : "showBalance")}`;
+    if (label) label.textContent = this.t(this.balanceVisible ? "hideBalance" : "showBalance");
     panel.hidden = !this.balanceVisible || !panel.innerHTML.trim();
   }
 
-  /** Plantilla pequeña para mantener consistentes las métricas. */
   statRow(label, value, stat) {
     return `
       <div class="hud__row">
@@ -438,7 +458,6 @@ export class UI {
     `;
   }
 
-  /** Crea botones con aria-pressed para accesibilidad de estado. */
   toolButton(tool, label, meta = "", extraClass = "") {
     if (typeof meta === "string" && !extraClass) {
       extraClass = meta;
@@ -480,7 +499,6 @@ export class UI {
     item.addEventListener("animationend", () => item.remove());
   }
 
-  /** Traduce claves visibles y cae a inglés si falta alguna entrada. */
   t(key) {
     return MESSAGES[this.locale][key] ?? MESSAGES.en[key] ?? key;
   }
