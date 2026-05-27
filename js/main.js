@@ -8,6 +8,7 @@ import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
 import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
+import { buildRoadFootprint, canBuildRoadFootprint, getRoadFootprintCost, makeFootprintSelection } from "./RoadFootprints.js";
 import { SIMULATION_CONFIG } from "./SimulationConfig.js";
 import { runSecretCommand } from "./SecretCommands.js";
 
@@ -53,6 +54,7 @@ const ui = new UI(hud, {
   },
   onToolChange: (tool) => {
     state.tool = tool;
+    state.hoverCell = state.hoverCell ? makeHoverSelection(state.hoverCell.x, state.hoverCell.y) : null;
   },
   onSpeedLimitChange: (speedLimit) => {
     state.speedLimit = speedLimit;
@@ -219,7 +221,7 @@ function handleMapAction(event) {
   if (!state.running) return;
   const cell = getPointerCell(event);
   if (!grid.isInside(cell.x, cell.y)) return;
-  state.selectedCell = cell;
+  state.selectedCell = makeHoverSelection(cell.x, cell.y);
 
   if (state.tool === "demolish") {
     const building = grid.demolishBuilding(cell.x, cell.y);
@@ -254,10 +256,14 @@ function handleMapAction(event) {
   if (state.tool in ROAD_TYPES) {
     const road = roadManager.getRoad(cell.x, cell.y);
     if (!road) {
-      const cost = getRoadCost(state.tool);
+      const cost = getRoadFootprintCost(state.tool);
+      if (!canBuildRoadFootprint(grid, roadManager, cell.x, cell.y, state.tool)) {
+        ui.showNotice("No cabe esta carretera aquí");
+        return;
+      }
       if (state.budget >= cost) {
-        const builtRoad = roadManager.buildRoad(cell.x, cell.y, state.tool);
-        if (builtRoad) startRoadConstruction(roadManager, builtRoad);
+        const builtRoads = buildRoadFootprint(roadManager, cell.x, cell.y, state.tool);
+        for (const builtRoad of builtRoads) startRoadConstruction(roadManager, builtRoad);
         state.budget -= cost;
         ui.showMoney(-cost, event.clientX, event.clientY);
       } else {
@@ -298,7 +304,11 @@ function handleMapAction(event) {
 
 function updateHoverCell(event) {
   const cell = getPointerCell(event);
-  state.hoverCell = grid.isInside(cell.x, cell.y) ? cell : null;
+  state.hoverCell = grid.isInside(cell.x, cell.y) ? makeHoverSelection(cell.x, cell.y) : null;
+}
+
+function makeHoverSelection(x, y) {
+  return state.tool in ROAD_TYPES ? makeFootprintSelection(x, y, state.tool) : { x, y };
 }
 
 function getPointerCell(event) {
