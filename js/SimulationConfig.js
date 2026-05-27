@@ -15,9 +15,12 @@ export const SIMULATION_CONFIG = {
   trafficDemand: {
     housingForFullInternalTraffic: 360,
     housingForFullExternalTraffic: 720,
-    internalSpawnIntervalSeconds: 0.55,
-    externalSpawnIntervalSeconds: 0.22,
-    minimumExternalTrafficFactor: 0.08,
+    internalSpawnIntervalSeconds: 0.75,
+    externalSpawnIntervalSeconds: 1.4,
+    minimumExternalTrafficFactor: 0.05,
+    baseActiveVehicleLimit: 2,
+    housingPerActiveVehicle: 24,
+    maxActiveVehicles: 90,
   },
   roadWear: {
     baseWearPerSecondWithTraffic: 0.006,
