@@ -5,7 +5,7 @@ import { Renderer } from "./Renderer.js";
 import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
-import { getRoadUpgradeCost, startRoadUpgrade, updateRoadUpgrades } from "./RoadUpgrades.js";
+import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
 
 const canvas = document.querySelector("#game");
 const hud = document.querySelector("#hud");
@@ -106,7 +106,7 @@ function loop(now) {
   if (state.running) {
     const trafficCounts = trafficSystem.update(deltaSeconds);
     roadManager.update(deltaSeconds, trafficCounts);
-    updateRoadUpgrades(roadManager, deltaSeconds);
+    updateRoadWorks(roadManager, deltaSeconds);
     roadManager.growCity(deltaSeconds);
     state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
     state.monthTimer += deltaSeconds;
@@ -213,7 +213,8 @@ function handleMapAction(event) {
     if (!road) {
       const cost = getRoadCost(state.tool);
       if (state.budget >= cost) {
-        roadManager.buildRoad(cell.x, cell.y, state.tool);
+        const builtRoad = roadManager.buildRoad(cell.x, cell.y, state.tool);
+        if (builtRoad) startRoadConstruction(roadManager, builtRoad);
         state.budget -= cost;
         ui.showMoney(-cost, event.clientX, event.clientY);
       } else {
@@ -226,7 +227,7 @@ function handleMapAction(event) {
       ui.showNotice("Esta vía ya es de ese tipo");
       return;
     }
-    if (road.closedForRepair || road.closedForUpgrade || road.trafficClosed) {
+    if (road.closedForRepair || road.closedForUpgrade || road.closedForConstruction || road.trafficClosed) {
       ui.showNotice("La vía ya está cortada o en obras");
       return;
     }
@@ -308,7 +309,7 @@ function settleMonth() {
   const tripIncome = applyDiscontentPenalty(baseTripIncome, discontent);
   const discontentPenalty = basePopulationIncome + baseTripIncome - populationIncome - tripIncome;
   const roadMaintenance = costs.maintenance;
-  const repairCost = costs.repair;
+  const repairCost = costs.repair + getActiveUpgradeMonthlyCost(roadManager);
   const balance = populationIncome + tripIncome - roadMaintenance - repairCost;
   state.budget += balance;
   state.month += 1;

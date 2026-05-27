@@ -2,7 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { calculateDiscontent } from "../js/Discontent.js";
-import { getRoadUpgradeCost, startRoadUpgrade, updateRoadUpgrades } from "../js/RoadUpgrades.js";
+import { SIMULATION_CONFIG } from "../js/SimulationConfig.js";
+import {
+  getRoadUpgradeCost,
+  startRoadConstruction,
+  startRoadUpgrade,
+  updateRoadConstructions,
+  updateRoadUpgrades,
+} from "../js/RoadUpgrades.js";
+
+test("road construction closes traffic and finishes from config", () => {
+  const road = { x: 1, y: 1, type: "dirt", health: 100, traffic: 4, trafficClosed: false };
+  const roadManager = {
+    roads: new Map([["1,1", road]]),
+    dispatchNetworkChanged: () => {},
+  };
+
+  assert.equal(startRoadConstruction(roadManager, road), true);
+  assert.equal(road.closedForConstruction, true);
+  assert.equal(road.trafficClosed, true);
+  assert.equal(road.traffic, 0);
+  assert.equal(road.constructionRemainingSeconds, SIMULATION_CONFIG.roadWorks.constructionDurationSeconds);
+
+  updateRoadConstructions(roadManager, SIMULATION_CONFIG.roadWorks.constructionDurationSeconds + 1);
+
+  assert.equal(road.closedForConstruction, false);
+  assert.equal(road.trafficClosed, false);
+});
 
 test("road upgrades close traffic and finish automatically after a longer work", () => {
   const road = { x: 1, y: 1, type: "dirt", health: 50, traffic: 3, trafficClosed: false };
@@ -16,9 +42,9 @@ test("road upgrades close traffic and finish automatically after a longer work",
   assert.equal(road.closedForUpgrade, true);
   assert.equal(road.trafficClosed, true);
   assert.equal(road.traffic, 0);
-  assert.ok(road.upgradeRemainingSeconds > 18);
+  assert.ok(road.upgradeRemainingSeconds > SIMULATION_CONFIG.roadWorks.constructionDurationSeconds);
 
-  updateRoadUpgrades(roadManager, 999);
+  updateRoadUpgrades(roadManager, SIMULATION_CONFIG.roadWorks.upgradeDurationSeconds + 1);
 
   assert.equal(road.closedForUpgrade, false);
   assert.equal(road.trafficClosed, false);

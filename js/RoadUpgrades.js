@@ -1,6 +1,6 @@
+import { SIMULATION_CONFIG } from "./SimulationConfig.js";
 import { ROAD_TYPES } from "./RoadManager.js";
 
-const UPGRADE_DURATION_SECONDS = 22;
 const MIN_UPGRADE_COST_RATE = 0.35;
 const DIFFERENCE_UPGRADE_COST_RATE = 0.85;
 
@@ -14,19 +14,51 @@ export function getRoadUpgradeCost(fromType, toType) {
   return Math.ceil(Math.max(target.buildCost * MIN_UPGRADE_COST_RATE, costDifference * DIFFERENCE_UPGRADE_COST_RATE));
 }
 
+/** Inicia construcción: la vía existe visualmente, pero no acepta tráfico hasta terminar. */
+export function startRoadConstruction(roadManager, road) {
+  if (!road || road.closedForConstruction) return false;
+  const duration = SIMULATION_CONFIG.roadWorks.constructionDurationSeconds;
+  road.closedForConstruction = true;
+  road.constructionRemainingSeconds = duration;
+  road.constructionTotalSeconds = duration;
+  road.trafficClosed = true;
+  road.traffic = 0;
+  roadManager.dispatchNetworkChanged("construction-started", road);
+  return true;
+}
+
 /** Inicia una mejora sin demoler: corta la vía temporalmente y conserva la casilla. */
 export function startRoadUpgrade(roadManager, x, y, targetType) {
   const road = roadManager.getRoad(x, y);
-  if (!road || !ROAD_TYPES[targetType] || road.type === targetType || road.closedForUpgrade) return false;
+  if (!road || !ROAD_TYPES[targetType] || road.type === targetType || road.closedForUpgrade || road.closedForConstruction) return false;
 
+  const duration = SIMULATION_CONFIG.roadWorks.upgradeDurationSeconds;
   road.closedForUpgrade = true;
   road.upgradeTargetType = targetType;
-  road.upgradeRemainingSeconds = UPGRADE_DURATION_SECONDS;
-  road.upgradeTotalSeconds = UPGRADE_DURATION_SECONDS;
+  road.upgradeRemainingSeconds = duration;
+  road.upgradeTotalSeconds = duration;
   road.trafficClosed = true;
   road.traffic = 0;
   roadManager.dispatchNetworkChanged("upgrade-started", road);
   return true;
+}
+
+/** Avanza obras de construcción y mejora; ambas finalizan automáticamente. */
+export function updateRoadWorks(roadManager, deltaSeconds) {
+  updateRoadConstructions(roadManager, deltaSeconds);
+  updateRoadUpgrades(roadManager, deltaSeconds);
+}
+
+/** Avanza construcciones nuevas de carretera. */
+export function updateRoadConstructions(roadManager, deltaSeconds) {
+  for (const road of roadManager.roads.values()) {
+    if (!road.closedForConstruction) continue;
+    road.trafficClosed = true;
+    road.traffic = 0;
+    road.constructionRemainingSeconds = Math.max(0, road.constructionRemainingSeconds - deltaSeconds);
+
+    if (road.constructionRemainingSeconds <= 0) completeRoadConstruction(roadManager, road);
+  }
 }
 
 /** Avanza obras de mejora; tardan más que una reparación y finalizan automáticamente. */
@@ -36,7 +68,7 @@ export function updateRoadUpgrades(roadManager, deltaSeconds) {
     road.trafficClosed = true;
     road.traffic = 0;
     road.upgradeRemainingSeconds = Math.max(0, road.upgradeRemainingSeconds - deltaSeconds);
-    road.health = Math.min(100, road.health + deltaSeconds * 3);
+    road.health = Math.min(100, road.health + deltaSeconds * SIMULATION_CONFIG.roadWorks.upgradeHealthPerSecond);
 
     if (road.upgradeRemainingSeconds <= 0) completeRoadUpgrade(roadManager, road);
   }
@@ -49,9 +81,17 @@ export function getActiveUpgradeMonthlyCost(roadManager) {
     if (!road.closedForUpgrade) continue;
     const current = ROAD_TYPES[road.type]?.maintenanceCost ?? 0;
     const target = ROAD_TYPES[road.upgradeTargetType]?.maintenanceCost ?? current;
-    total += Math.max(current, target) * 28;
+    total += Math.max(current, target) * SIMULATION_CONFIG.roadWorks.activeUpgradeMonthlyCostMultiplier;
   }
   return Math.ceil(total);
+}
+
+function completeRoadConstruction(roadManager, road) {
+  road.trafficClosed = false;
+  road.closedForConstruction = false;
+  delete road.constructionRemainingSeconds;
+  delete road.constructionTotalSeconds;
+  roadManager.dispatchNetworkChanged("construction-completed", road);
 }
 
 function completeRoadUpgrade(roadManager, road) {

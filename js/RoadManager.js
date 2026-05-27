@@ -1,3 +1,5 @@
+import { SIMULATION_CONFIG } from "./SimulationConfig.js";
+
 export const ROAD_TYPES = {
   dirt: {
     label: "dirt",
@@ -148,7 +150,7 @@ export class RoadManager extends EventTarget {
   /** Cerrar por reparación elimina el segmento de las rutas y regenera A*. */
   setRepair(x, y, closedForRepair) {
     const road = this.getRoad(x, y);
-    if (!road) return;
+    if (!road || road.closedForConstruction || road.closedForUpgrade) return;
     road.closedForRepair = closedForRepair;
     if (closedForRepair) {
       road.trafficClosed = false;
@@ -160,7 +162,7 @@ export class RoadManager extends EventTarget {
   /** Cierra o abre una vía al tráfico sin repararla. */
   setTrafficClosed(x, y, trafficClosed) {
     const road = this.getRoad(x, y);
-    if (!road || road.closedForRepair) return false;
+    if (!road || road.closedForRepair || road.closedForConstruction || road.closedForUpgrade) return false;
     road.trafficClosed = trafficClosed;
     if (trafficClosed) road.traffic = 0;
     this.dispatchNetworkChanged("traffic-closed-toggled", road);
@@ -225,7 +227,7 @@ export class RoadManager extends EventTarget {
       this.updateTrafficLight(road, deltaSeconds);
 
       if (road.closedForRepair) {
-        road.health = Math.min(100, road.health + deltaSeconds * 8);
+        road.health = Math.min(100, road.health + deltaSeconds * SIMULATION_CONFIG.roadWorks.repairHealthPerSecond);
         road.traffic = 0;
         if (road.health >= 100) {
           road.closedForRepair = false;
@@ -244,7 +246,7 @@ export class RoadManager extends EventTarget {
 
   /** Calcula velocidad real combinando estado, reparación, señales y congestión. */
   getEffectiveSpeed(road) {
-    if (!road || road.closedForRepair || road.trafficClosed) return 0;
+    if (!road || road.closedForRepair || road.closedForConstruction || road.closedForUpgrade || road.trafficClosed) return 0;
     const definition = ROAD_TYPES[road.type];
     if (!definition?.trafficAllowed) return 0;
     const healthPenalty = road.health < 20 ? 0.18 : road.health < 50 ? 0.5 : road.health < 75 ? 0.78 : 1;
@@ -261,7 +263,18 @@ export class RoadManager extends EventTarget {
     const fromType = ROAD_TYPES[fromRoad.type];
     const toType = ROAD_TYPES[toRoad.type];
     if (!fromType?.trafficAllowed || !toType?.trafficAllowed) return false;
-    if (fromRoad.closedForRepair || toRoad.closedForRepair || fromRoad.trafficClosed || toRoad.trafficClosed) return false;
+    if (
+      fromRoad.closedForRepair ||
+      toRoad.closedForRepair ||
+      fromRoad.closedForConstruction ||
+      toRoad.closedForConstruction ||
+      fromRoad.closedForUpgrade ||
+      toRoad.closedForUpgrade ||
+      fromRoad.trafficClosed ||
+      toRoad.trafficClosed
+    ) {
+      return false;
+    }
     if (!fromType.oneWay) return true;
     const dx = toRoad.x - fromRoad.x;
     const dy = toRoad.y - fromRoad.y;
@@ -392,7 +405,7 @@ export class RoadManager extends EventTarget {
       const key = queue.shift();
       if (visited.has(key)) continue;
       const road = this.roads.get(key);
-      if (!road || !ROAD_TYPES[road.type]?.trafficAllowed || road.closedForRepair) continue;
+      if (!road || !ROAD_TYPES[road.type]?.trafficAllowed || road.closedForRepair || road.closedForConstruction || road.closedForUpgrade) continue;
       visited.add(key);
       for (const neighbor of this.grid.getNeighbors(road.x, road.y)) {
         if (neighbor.road && this.canTravel(road, neighbor.road)) {
@@ -416,6 +429,8 @@ export class RoadManager extends EventTarget {
       return (
         definition?.trafficAllowed &&
         !road.closedForRepair &&
+        !road.closedForConstruction &&
+        !road.closedForUpgrade &&
         (road.x === 0 || road.y === 0 || road.x === this.grid.width - 1 || road.y === this.grid.height - 1)
       );
     });
