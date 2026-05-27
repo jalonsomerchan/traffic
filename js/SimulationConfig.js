@@ -19,6 +19,12 @@ export const SIMULATION_CONFIG = {
     externalSpawnIntervalSeconds: 0.22,
     minimumExternalTrafficFactor: 0.08,
   },
+  roadWear: {
+    baseWearPerSecondWithTraffic: 0.006,
+    wearPerVehicleSecond: 0.022,
+    overloadWearMultiplier: 0.08,
+    accumulatedTrafficDecayPerSecond: 0.12,
+  },
   trafficIncidents: {
     detourDiscontent: 0.018,
     blockedRouteDiscontent: 0.18,
