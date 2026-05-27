@@ -23,16 +23,29 @@ export class TrafficSystem {
   /** Tick principal: crea viajes, mueve vehículos y devuelve conteos por vía. */
   update(deltaSeconds) {
     const demand = this.getHousingTrafficDemand();
-    this.spawnTimer += deltaSeconds * demand.internalFactor;
-    this.edgeSpawnTimer += deltaSeconds * demand.externalFactor;
-    if (this.spawnTimer > SIMULATION_CONFIG.trafficDemand.internalSpawnIntervalSeconds) {
-      this.spawnTimer = 0;
-      this.spawnVehicleFromDemand();
+    const config = SIMULATION_CONFIG.trafficDemand;
+    const canSpawn = this.hasVehicleCapacity(demand);
+
+    if (canSpawn && demand.internalFactor > 0) {
+      this.spawnTimer += deltaSeconds * demand.internalFactor;
+      if (this.spawnTimer > config.internalSpawnIntervalSeconds) {
+        this.spawnTimer = 0;
+        this.spawnVehicleFromDemand();
+      }
+    } else {
+      this.spawnTimer = Math.min(this.spawnTimer, config.internalSpawnIntervalSeconds * 0.35);
     }
-    if (this.edgeSpawnTimer > SIMULATION_CONFIG.trafficDemand.externalSpawnIntervalSeconds) {
-      this.edgeSpawnTimer = 0;
-      this.spawnVehicleFromEdgeConnection();
+
+    if (canSpawn && demand.externalFactor > 0) {
+      this.edgeSpawnTimer += deltaSeconds * demand.externalFactor;
+      if (this.edgeSpawnTimer > config.externalSpawnIntervalSeconds) {
+        this.edgeSpawnTimer = 0;
+        this.spawnVehicleFromEdgeConnection();
+      }
+    } else {
+      this.edgeSpawnTimer = Math.min(this.edgeSpawnTimer, config.externalSpawnIntervalSeconds * 0.35);
     }
+
     this.moveVehicles(deltaSeconds);
     return this.collectTrafficCounts();
   }
@@ -42,15 +55,28 @@ export class TrafficSystem {
     const config = SIMULATION_CONFIG.trafficDemand;
     return {
       housing,
+      activeVehicleLimit: this.getActiveVehicleLimit(housing),
       internalFactor: clamp01(housing / Math.max(1, config.housingForFullInternalTraffic)),
       externalFactor: housing > 0
         ? Math.max(config.minimumExternalTrafficFactor, clamp01(housing / Math.max(1, config.housingForFullExternalTraffic)))
-        : config.minimumExternalTrafficFactor * 0.25,
+        : config.minimumExternalTrafficFactor * 0.2,
     };
+  }
+
+  getActiveVehicleLimit(housing = this.grid.getHousingCapacity()) {
+    const config = SIMULATION_CONFIG.trafficDemand;
+    const housingBasedLimit = Math.floor(housing / Math.max(1, config.housingPerActiveVehicle));
+    const limit = config.baseActiveVehicleLimit + housingBasedLimit;
+    return Math.max(0, Math.min(config.maxActiveVehicles, limit));
+  }
+
+  hasVehicleCapacity(demand = this.getHousingTrafficDemand()) {
+    return this.vehicles.length < demand.activeVehicleLimit;
   }
 
   /** Convierte demanda de edificios cercanos a carreteras en vehículos nuevos. */
   spawnVehicleFromDemand() {
+    if (!this.hasVehicleCapacity()) return;
     const sources = [...this.grid.cells.values()].filter((cell) => cell.building);
     const roads = [...this.roadManager.roads.values()].filter((road) => this.roadManager.getEffectiveSpeed(road) > 0);
     if (sources.length < 1 || roads.length < 2) return;
@@ -67,6 +93,7 @@ export class TrafficSystem {
 
   /** Genera tráfico externo desde las conexiones al borde del mapa. */
   spawnVehicleFromEdgeConnection() {
+    if (!this.hasVehicleCapacity()) return;
     const entries = this.roadManager.getEdgeConnections();
     const destinations = [...this.roadManager.roads.values()].filter((road) => this.roadManager.getEffectiveSpeed(road) > 0);
     if (!entries.length || destinations.length < 2) return;
