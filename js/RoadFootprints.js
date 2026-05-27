@@ -32,7 +32,8 @@ export function getRoadFootprintCost(type) {
 
 export function canBuildRoadFootprint(grid, roadManager, x, y, type) {
   return getRoadFootprintCells(x, y, type).every((cell) => {
-    return grid.isInside(cell.x, cell.y) && !roadManager.getRoad(cell.x, cell.y);
+    const gridCell = grid.getCell(cell.x, cell.y);
+    return grid.isInside(cell.x, cell.y) && !gridCell?.tree && !roadManager.getRoad(cell.x, cell.y);
   });
 }
 
