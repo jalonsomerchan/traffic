@@ -4,6 +4,8 @@ import { TrafficSystem } from "./TrafficSystem.js";
 import { Renderer } from "./Renderer.js";
 import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
+import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
+import { getRoadUpgradeCost, startRoadUpgrade, updateRoadUpgrades } from "./RoadUpgrades.js";
 
 const canvas = document.querySelector("#game");
 const hud = document.querySelector("#hud");
@@ -30,6 +32,7 @@ const state = {
   dragStart: null,
   dragMoved: false,
   timeScale: 1,
+  discontent: calculateDiscontent(roadManager, 0),
 };
 
 const ui = new UI(hud, {
@@ -103,7 +106,9 @@ function loop(now) {
   if (state.running) {
     const trafficCounts = trafficSystem.update(deltaSeconds);
     roadManager.update(deltaSeconds, trafficCounts);
+    updateRoadUpgrades(roadManager, deltaSeconds);
     roadManager.growCity(deltaSeconds);
+    state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
     state.monthTimer += deltaSeconds;
     if (state.monthTimer >= state.monthLengthSeconds) {
       state.monthTimer -= state.monthLengthSeconds;
@@ -125,6 +130,7 @@ function loop(now) {
     map: `${grid.width} x ${grid.height}`,
     month: state.month,
     monthProgress: state.monthTimer / state.monthLengthSeconds,
+    discontent: state.discontent,
     statement: state.lastStatement,
   });
   requestAnimationFrame(loop);
@@ -203,16 +209,38 @@ function handleMapAction(event) {
   }
 
   if (state.tool in ROAD_TYPES) {
-    const cost = getRoadCost(state.tool);
-    if (state.budget >= cost && !roadManager.getRoad(cell.x, cell.y)) {
-      roadManager.buildRoad(cell.x, cell.y, state.tool);
-      state.budget -= cost;
-      ui.showMoney(-cost, event.clientX, event.clientY);
-    } else if (state.budget < cost) {
-      ui.showNotice("No hay presupuesto suficiente");
-    } else {
-      ui.showNotice("Casilla ocupada");
+    const road = roadManager.getRoad(cell.x, cell.y);
+    if (!road) {
+      const cost = getRoadCost(state.tool);
+      if (state.budget >= cost) {
+        roadManager.buildRoad(cell.x, cell.y, state.tool);
+        state.budget -= cost;
+        ui.showMoney(-cost, event.clientX, event.clientY);
+      } else {
+        ui.showNotice("No hay presupuesto suficiente");
+      }
+      return;
     }
+
+    if (road.type === state.tool) {
+      ui.showNotice("Esta vía ya es de ese tipo");
+      return;
+    }
+    if (road.closedForRepair || road.closedForUpgrade || road.trafficClosed) {
+      ui.showNotice("La vía ya está cortada o en obras");
+      return;
+    }
+
+    const upgradeCost = getRoadUpgradeCost(road.type, state.tool);
+    if (state.budget < upgradeCost) {
+      ui.showNotice("No hay presupuesto suficiente");
+      return;
+    }
+    if (startRoadUpgrade(roadManager, cell.x, cell.y, state.tool)) {
+      state.budget -= upgradeCost;
+      ui.showMoney(-upgradeCost, event.clientX, event.clientY);
+    }
+    return;
   }
   if (state.tool === "light") roadManager.placeTrafficLight(cell.x, cell.y);
   if (state.tool === "repair") {
@@ -265,6 +293,7 @@ function resetGame() {
   trafficSystem.spawnTimer = 0;
   trafficSystem.edgeSpawnTimer = 0;
   seedStarterCity();
+  state.discontent = calculateDiscontent(roadManager, 0);
 }
 
 /** Liquida ingresos y gastos en bloque para que la economía sea legible. */
@@ -272,13 +301,18 @@ function settleMonth() {
   const housing = grid.getHousingCapacity();
   const completedTrips = trafficSystem.completedTrips;
   const costs = roadManager.getMonthlyCostBreakdown();
-  const populationIncome = Math.floor(housing * MONTHLY_RESIDENT_TAX);
-  const tripIncome = trafficSystem.consumeTaxRevenue();
+  const discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
+  const basePopulationIncome = Math.floor(housing * MONTHLY_RESIDENT_TAX);
+  const baseTripIncome = trafficSystem.consumeTaxRevenue();
+  const populationIncome = applyDiscontentPenalty(basePopulationIncome, discontent);
+  const tripIncome = applyDiscontentPenalty(baseTripIncome, discontent);
+  const discontentPenalty = basePopulationIncome + baseTripIncome - populationIncome - tripIncome;
   const roadMaintenance = costs.maintenance;
   const repairCost = costs.repair;
   const balance = populationIncome + tripIncome - roadMaintenance - repairCost;
   state.budget += balance;
   state.month += 1;
+  state.discontent = discontent;
   state.lastStatement = {
     month: state.month - 1,
     housing,
@@ -287,6 +321,8 @@ function settleMonth() {
     repairCount: costs.repairCount,
     populationIncome,
     tripIncome,
+    discontent: discontent.value,
+    discontentPenalty,
     roadMaintenance,
     repairCost,
     balance,
@@ -336,4 +372,5 @@ function hydrateGame(saved) {
   trafficSystem.edgeSpawnTimer = saved.traffic?.edgeSpawnTimer ?? 0;
   trafficSystem.spawnTimer = saved.traffic?.spawnTimer ?? 0;
   trafficSystem.pathCache.clear();
+  state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
 }
