@@ -2,11 +2,14 @@ import { Grid } from "./Grid.js";
 import { ROAD_TYPES, RoadManager } from "./RoadManager.js";
 import { TrafficSystem } from "./TrafficSystem.js";
 import { Renderer } from "./Renderer.js";
+import { installRoadSkins } from "./RoadSkins.js";
 import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
 import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
 import { SIMULATION_CONFIG } from "./SimulationConfig.js";
+
+installRoadSkins(Renderer);
 
 const canvas = document.querySelector("#game");
 const hud = document.querySelector("#hud");
