@@ -107,7 +107,7 @@ test("drivers reroute around a closed road when an alternative exists", () => {
   assert.ok(trafficSystem.vehicles[0].path.some((cell) => cell.y === 1));
 });
 
-test("drivers get angry when a closure leaves no alternative route", () => {
+test("drivers wait before a closure when there is no alternative route", () => {
   const grid = new Grid({ width: 3, height: 1 });
   const roadManager = new RoadManager(grid);
   const trafficSystem = new TrafficSystem(grid, roadManager);
@@ -122,13 +122,16 @@ test("drivers get angry when a closure leaves no alternative route", () => {
   trafficSystem.vehicles.push({
     path: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
     index: 0,
-    progress: 0,
+    progress: 0.4,
     speed: 1,
   });
 
   roadManager.setTrafficClosed(1, 0, true);
 
-  assert.equal(trafficSystem.vehicles.length, 0);
+  assert.equal(trafficSystem.vehicles.length, 1);
+  assert.deepEqual(trafficSystem.vehicles[0].path[trafficSystem.vehicles[0].index], { x: 0, y: 0 });
+  assert.deepEqual(trafficSystem.vehicles[0].waitingFor, { x: 1, y: 0 });
+  assert.equal(trafficSystem.vehicles[0].progress, 0);
   assert.equal(trafficSystem.blockedRoutes, 1);
   assert.equal(blockedNotices, 1);
 });
