@@ -1,0 +1,1 @@
+Clean HD isometric road type atlas, one sprite per road type.

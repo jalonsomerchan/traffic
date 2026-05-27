@@ -1,0 +1,1 @@
+Clean HD isometric road surface tile atlas for traffic simulation.

@@ -1,0 +1,1 @@
+Compact isometric city buildings without roads, sidewalks, or ground base.

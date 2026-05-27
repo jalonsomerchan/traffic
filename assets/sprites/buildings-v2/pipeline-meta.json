@@ -1,0 +1,219 @@
+{
+  "target": "asset",
+  "mode": "sheet",
+  "prompt": "Compact isometric city buildings without roads, sidewalks, or ground base.",
+  "role": "",
+  "input": "/Users/jorgealonso/.codex/generated_images/019e6851-d61e-7723-902a-286895d5e258/ig_0a83f395e80fd31b016a16a5477d088191810e1c58b992e63b.png",
+  "threshold": 100,
+  "edge_threshold": 150,
+  "duration": 200,
+  "rows": 2,
+  "cols": 3,
+  "cell_size": 128,
+  "fit_scale": 0.82,
+  "trim_border": 4,
+  "edge_clean_depth": 3,
+  "align": "bottom",
+  "shared_scale": true,
+  "component_mode": "all",
+  "component_padding": 0,
+  "min_component_area": 1,
+  "edge_touch_margin": 4,
+  "frame_labels": [
+    "sheet-1",
+    "sheet-2",
+    "sheet-3",
+    "sheet-4",
+    "sheet-5",
+    "sheet-6"
+  ],
+  "frames": [
+    {
+      "grid": [
+        0,
+        0
+      ],
+      "source_box": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        118,
+        53,
+        370,
+        422
+      ],
+      "edge_touch": false,
+      "output_size": [
+        65,
+        96
+      ],
+      "paste_position": [
+        31,
+        21
+      ]
+    },
+    {
+      "grid": [
+        0,
+        1
+      ],
+      "source_box": [
+        512,
+        0,
+        1024,
+        512
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        109,
+        32,
+        366,
+        434
+      ],
+      "edge_touch": false,
+      "output_size": [
+        67,
+        104
+      ],
+      "paste_position": [
+        30,
+        13
+      ]
+    },
+    {
+      "grid": [
+        0,
+        2
+      ],
+      "source_box": [
+        1024,
+        0,
+        1536,
+        512
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        94,
+        82,
+        359,
+        409
+      ],
+      "edge_touch": false,
+      "output_size": [
+        69,
+        85
+      ],
+      "paste_position": [
+        29,
+        32
+      ]
+    },
+    {
+      "grid": [
+        1,
+        0
+      ],
+      "source_box": [
+        0,
+        512,
+        512,
+        1024
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        122,
+        82,
+        361,
+        413
+      ],
+      "edge_touch": false,
+      "output_size": [
+        62,
+        86
+      ],
+      "paste_position": [
+        33,
+        31
+      ]
+    },
+    {
+      "grid": [
+        1,
+        1
+      ],
+      "source_box": [
+        512,
+        512,
+        1024,
+        1024
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        102,
+        54,
+        368,
+        424
+      ],
+      "edge_touch": false,
+      "output_size": [
+        69,
+        96
+      ],
+      "paste_position": [
+        29,
+        21
+      ]
+    },
+    {
+      "grid": [
+        1,
+        2
+      ],
+      "source_box": [
+        1024,
+        512,
+        1536,
+        1024
+      ],
+      "component_mode": "all",
+      "component_count": 1,
+      "selected_component_area": null,
+      "selected_component_bbox": null,
+      "crop_bbox": [
+        99,
+        74,
+        375,
+        416
+      ],
+      "edge_touch": false,
+      "output_size": [
+        72,
+        89
+      ],
+      "paste_position": [
+        28,
+        28
+      ]
+    }
+  ],
+  "edge_touch_frames": []
+}

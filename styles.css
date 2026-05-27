@@ -1,0 +1,351 @@
+:root {
+  color-scheme: light dark;
+  --color-bg: #edf3f0;
+  --color-panel: rgba(252, 253, 251, 0.92);
+  --color-panel-strong: #ffffff;
+  --color-text: #16211d;
+  --color-muted: #51615b;
+  --color-border: rgba(28, 48, 40, 0.18);
+  --color-accent: #167f67;
+  --color-accent-2: #365f91;
+  --color-danger: #b84635;
+  --radius-md: 8px;
+  --shadow-soft: 0 16px 42px rgba(22, 33, 29, 0.16);
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --transition-fast: 160ms ease;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #101715;
+    --color-panel: rgba(23, 32, 29, 0.92);
+    --color-panel-strong: #18221f;
+    --color-text: #eef6f2;
+    --color-muted: #aab7b1;
+    --color-border: rgba(238, 246, 242, 0.18);
+    --shadow-soft: 0 16px 42px rgba(0, 0, 0, 0.34);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+button,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  position: relative;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  touch-action: none;
+}
+
+.hud {
+  align-self: start;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: var(--space-3);
+  inset: var(--space-4) var(--space-4) auto auto;
+  max-height: calc(100vh - 2rem);
+  max-width: min(30rem, calc(100vw - 2rem));
+  overflow: auto;
+  padding: var(--space-4);
+  position: fixed;
+}
+
+.hud h1 {
+  font-size: 1.05rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.start-screen,
+.about-panel {
+  align-items: center;
+  backdrop-filter: blur(10px);
+  background: rgba(9, 18, 15, 0.48);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: var(--space-4);
+  position: fixed;
+  z-index: 4;
+}
+
+.start-screen[hidden],
+.about-panel[hidden] {
+  display: none;
+}
+
+.start-screen__panel,
+.about-panel > div {
+  background: var(--color-panel-strong);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: var(--space-3);
+  max-width: 30rem;
+  padding: 1.25rem;
+}
+
+.start-screen p,
+.about-panel p {
+  color: var(--color-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.hud__stats,
+.hud__tools {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.hud__row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.statement {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem;
+}
+
+.statement strong {
+  font-size: 0.86rem;
+}
+
+.statement div {
+  align-items: center;
+  color: var(--color-muted);
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.statement b {
+  color: var(--color-text);
+}
+
+.statement span {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.statement small {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+}
+
+.statement__income b {
+  color: var(--color-accent);
+}
+
+.statement__cost b {
+  color: var(--color-danger);
+}
+
+.hud__label {
+  color: var(--color-muted);
+  font-size: 0.86rem;
+}
+
+.hud__value {
+  font-weight: 700;
+}
+
+.hud__grid {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hud__grid--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tool-palette {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.time-control {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.view-control {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.hud button,
+.hud select,
+.file-button {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  display: grid;
+  gap: 0.1rem;
+  justify-items: start;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.hud button:hover,
+.hud button:focus-visible,
+.hud select:focus-visible,
+.file-button:hover,
+.file-button:focus-within {
+  border-color: var(--color-accent);
+  outline: 2px solid transparent;
+}
+
+.hud button b {
+  font-size: 0.78rem;
+  line-height: 1.1;
+}
+
+.hud button span {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+}
+
+.hud button[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
+  border-color: transparent;
+  color: white;
+}
+
+.hud button[aria-pressed="true"] span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.hud .danger[aria-pressed="true"] {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.speed-control {
+  align-items: center;
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: 1fr auto;
+}
+
+.speed-control span {
+  color: var(--color-muted);
+  font-size: 0.86rem;
+}
+
+.speed-control select {
+  min-width: 5.5rem;
+}
+
+.file-button input {
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.start-screen button,
+.about-panel button,
+.file-button {
+  background: var(--color-panel);
+  width: 100%;
+}
+
+.float-message {
+  background: rgba(18, 28, 24, 0.92);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  color: white;
+  font-weight: 800;
+  left: 50%;
+  padding: 0.45rem 0.7rem;
+  pointer-events: none;
+  position: fixed;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  animation: float-message 1100ms ease forwards;
+}
+
+.float-message.money {
+  background: rgba(22, 127, 103, 0.94);
+}
+
+.float-message.money--cost,
+.float-message.notice {
+  background: rgba(184, 70, 53, 0.94);
+}
+
+@keyframes float-message {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -20%);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -140%);
+  }
+}
+
+@media (max-width: 720px) {
+  .hud {
+    inset: auto var(--space-3) var(--space-3) var(--space-3);
+    max-width: none;
+  }
+
+  .tool-palette {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .view-control {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
