@@ -18,6 +18,8 @@ const MESSAGES = {
     nextMonth: "Siguiente cobro",
     discontent: "Descontento",
     balance: "Balance mensual",
+    hideBalance: "Ocultar balance",
+    showBalance: "Mostrar balance",
     populationIncome: "Impuestos de habitantes",
     tripIncome: "Tasas por uso de vías",
     discontentPenalty: "Pérdida por descontento",
@@ -30,15 +32,20 @@ const MESSAGES = {
     repairsSuffix: "cortes",
     tool: "Herramienta",
     dirt: "Tierra",
+    gravelRoad: "Grava",
     concretePath: "Cemento",
-    stonePath: "Piedra",
+    stonePath: "Adoquín",
     pedestrian: "Peatonal",
     oneWay: "Un sentido",
     twoWay: "Doble sentido",
+    cityRoad: "Urbana",
     premiumRoad: "Premium",
     avenue: "Avenida",
+    boulevard: "Bulevar",
     premiumAvenue: "Av. premium",
+    expressway: "Vía rápida",
     highway: "Autopista",
+    megaHighway: "Mega autopista",
     roundabout: "Rotonda",
     light: "Semáforo",
     repair: "Reparar",
@@ -59,7 +66,6 @@ const MESSAGES = {
     slow: "Lento",
     normal: "Normal",
     fast: "Rápido",
-    heatmap: "Heatmap",
     transparentBuildings: "Edificios transparentes",
     expand: "Ampliar mapa",
     zoomIn: "Zoom +",
@@ -85,6 +91,8 @@ const MESSAGES = {
     nextMonth: "Next payout",
     discontent: "Discontent",
     balance: "Monthly balance",
+    hideBalance: "Hide balance",
+    showBalance: "Show balance",
     populationIncome: "Resident taxes",
     tripIncome: "Road usage fees",
     discontentPenalty: "Discontent loss",
@@ -97,15 +105,20 @@ const MESSAGES = {
     repairsSuffix: "closures",
     tool: "Tool",
     dirt: "Dirt",
+    gravelRoad: "Gravel",
     concretePath: "Concrete",
-    stonePath: "Stone",
+    stonePath: "Cobblestone",
     pedestrian: "Pedestrian",
     oneWay: "One-way",
     twoWay: "Two-way",
+    cityRoad: "City road",
     premiumRoad: "Premium",
     avenue: "Avenue",
+    boulevard: "Boulevard",
     premiumAvenue: "Premium av.",
+    expressway: "Expressway",
     highway: "Highway",
+    megaHighway: "Mega highway",
     roundabout: "Roundabout",
     light: "Signal",
     repair: "Repair",
@@ -126,7 +139,6 @@ const MESSAGES = {
     slow: "Slow",
     normal: "Normal",
     fast: "Fast",
-    heatmap: "Heatmap",
     transparentBuildings: "Transparent buildings",
     expand: "Expand map",
     zoomIn: "Zoom +",
@@ -139,17 +151,64 @@ const MESSAGES = {
 
 const ROAD_TOOL_ORDER = [
   "dirt",
+  "gravelRoad",
   "concretePath",
   "stonePath",
   "pedestrian",
   "oneWay",
   "twoWay",
+  "cityRoad",
   "premiumRoad",
   "avenue",
+  "boulevard",
   "premiumAvenue",
+  "expressway",
   "highway",
+  "megaHighway",
   "roundabout",
 ];
+
+const TOOL_ICONS = {
+  dirt: "🟫",
+  gravelRoad: "🪨",
+  concretePath: "▫️",
+  stonePath: "▦",
+  pedestrian: "🚶",
+  oneWay: "➡️",
+  twoWay: "↔️",
+  cityRoad: "🏙️",
+  premiumRoad: "💎",
+  avenue: "🌳",
+  boulevard: "🌲",
+  premiumAvenue: "✨",
+  expressway: "🏎️",
+  highway: "🛣️",
+  megaHighway: "🚀",
+  roundabout: "🔄",
+  light: "🚦",
+  removeLight: "🚫",
+  repair: "🔧",
+  closeRoad: "⛔",
+  removeRoad: "🧹",
+  demolish: "🏗️",
+  direction: "🔁",
+  transparentBuildings: "👻",
+  normal: "▶️",
+  pause: "⏸️",
+  slow: "🐢",
+  fast: "⚡",
+  viewNormal: "👁️",
+  viewTraffic: "🔥",
+  viewHealth: "❤️",
+  viewType: "🎨",
+  viewSpeed: "⏱️",
+  zoomIn: "🔍",
+  zoomOut: "🔎",
+  expand: "↗️",
+  save: "💾",
+  download: "📤",
+  load: "📥",
+};
 
 export class UI {
   /**
@@ -164,6 +223,7 @@ export class UI {
     this.speedLimit = 50;
     this.timeScale = 1;
     this.viewMode = "normal";
+    this.balanceVisible = true;
     this.render();
   }
 
@@ -202,7 +262,8 @@ export class UI {
         ${this.statRow(t("nextMonth"), "0%", "monthProgress")}
         ${this.statRow(t("discontent"), "0%", "discontent")}
       </section>
-      <section class="statement" data-statement hidden aria-live="polite"></section>
+      <button type="button" class="balance-toggle" data-action="toggle-balance" aria-expanded="true">📊 ${t("hideBalance")}</button>
+      <section class="statement" data-statement aria-live="polite"></section>
       <section class="hud__tools" aria-label="${t("tool")}">
         <div class="tool-palette">
           ${ROAD_TOOL_ORDER.map((tool) => this.toolButton(tool, t(tool), ROAD_TYPES[tool].buildCost)).join("")}
@@ -218,11 +279,11 @@ export class UI {
           ${this.toolButton("transparentBuildings", t("transparentBuildings"))}
         </div>
         <div class="view-control" aria-label="${t("viewMode")}">
-          ${this.viewButton("normal", t("viewNormal"))}
-          ${this.viewButton("traffic", t("viewTraffic"))}
-          ${this.viewButton("health", t("viewHealth"))}
-          ${this.viewButton("type", t("viewType"))}
-          ${this.viewButton("speed", t("viewSpeed"))}
+          ${this.viewButton("normal", TOOL_ICONS.viewNormal, t("viewNormal"))}
+          ${this.viewButton("traffic", TOOL_ICONS.viewTraffic, t("viewTraffic"))}
+          ${this.viewButton("health", TOOL_ICONS.viewHealth, t("viewHealth"))}
+          ${this.viewButton("type", TOOL_ICONS.viewType, t("viewType"))}
+          ${this.viewButton("speed", TOOL_ICONS.viewSpeed, t("viewSpeed"))}
         </div>
         <label class="speed-control">
           <span>${t("speed")}</span>
@@ -231,18 +292,18 @@ export class UI {
           </select>
         </label>
         <div class="time-control" aria-label="${t("time")}">
-          ${this.timeButton(0, t("pause"))}
-          ${this.timeButton(0.5, t("slow"))}
-          ${this.timeButton(1, t("normal"))}
-          ${this.timeButton(2.5, t("fast"))}
+          ${this.timeButton(0, TOOL_ICONS.pause, t("pause"))}
+          ${this.timeButton(0.5, TOOL_ICONS.slow, t("slow"))}
+          ${this.timeButton(1, TOOL_ICONS.normal, t("normal"))}
+          ${this.timeButton(2.5, TOOL_ICONS.fast, t("fast"))}
         </div>
         <div class="hud__grid">
-          <button type="button" data-action="zoom-in">${t("zoomIn")}</button>
-          <button type="button" data-action="zoom-out">${t("zoomOut")}</button>
-          <button type="button" data-action="expand">${t("expand")}</button>
-          <button type="button" data-action="save">${t("save")}</button>
-          <button type="button" data-action="download">${t("download")}</button>
-          <button type="button" data-action="load">${t("load")}</button>
+          <button type="button" data-action="zoom-in">${this.iconLabel(TOOL_ICONS.zoomIn, t("zoomIn"))}</button>
+          <button type="button" data-action="zoom-out">${this.iconLabel(TOOL_ICONS.zoomOut, t("zoomOut"))}</button>
+          <button type="button" data-action="expand">${this.iconLabel(TOOL_ICONS.expand, t("expand"))}</button>
+          <button type="button" data-action="save">${this.iconLabel(TOOL_ICONS.save, t("save"))}</button>
+          <button type="button" data-action="download">${this.iconLabel(TOOL_ICONS.download, t("download"))}</button>
+          <button type="button" data-action="load">${this.iconLabel(TOOL_ICONS.load, t("load"))}</button>
         </div>
       </section>
     `;
@@ -269,7 +330,7 @@ export class UI {
       panel.hidden = true;
       return;
     }
-    panel.hidden = false;
+    panel.hidden = !this.balanceVisible;
     const t = this.t.bind(this);
     const discontentDetail = `${Math.floor((statement.discontent ?? 0) * 100)}%`;
     panel.innerHTML = `
@@ -311,6 +372,7 @@ export class UI {
       });
       this.callbacks.onToolChange(tool);
     }
+    if (action === "toggle-balance") this.toggleBalance();
     if (action === "new") this.callbacks.onNewGame();
     if (action === "about") this.toggleAbout(true);
     if (action === "close-about") this.toggleAbout(false);
@@ -356,6 +418,15 @@ export class UI {
     this.root.querySelector('[data-panel="about"]').hidden = !open;
   }
 
+  toggleBalance() {
+    this.balanceVisible = !this.balanceVisible;
+    const button = this.root.querySelector('[data-action="toggle-balance"]');
+    const panel = this.root.querySelector("[data-statement]");
+    button.setAttribute("aria-expanded", String(this.balanceVisible));
+    button.textContent = `📊 ${this.t(this.balanceVisible ? "hideBalance" : "showBalance")}`;
+    panel.hidden = !this.balanceVisible || !panel.innerHTML.trim();
+  }
+
   /** Plantilla pequeña para mantener consistentes las métricas. */
   statRow(label, value, stat) {
     return `
@@ -374,15 +445,19 @@ export class UI {
     }
     const pressed = tool === this.tool ? "true" : "false";
     const price = meta ? `<span>$${meta}</span>` : "";
-    return `<button type="button" class="${extraClass}" data-tool="${tool}" aria-pressed="${pressed}"><b>${label}</b>${price}</button>`;
+    return `<button type="button" class="${extraClass}" data-tool="${tool}" aria-pressed="${pressed}">${this.iconLabel(TOOL_ICONS[tool] ?? "⬢", label)}${price}</button>`;
   }
 
-  timeButton(value, label) {
-    return `<button type="button" data-action="time" data-value="${value}" aria-pressed="${value === this.timeScale}"><b>${label}</b></button>`;
+  timeButton(value, icon, label) {
+    return `<button type="button" data-action="time" data-value="${value}" aria-pressed="${value === this.timeScale}">${this.iconLabel(icon, label)}</button>`;
   }
 
-  viewButton(value, label) {
-    return `<button type="button" data-action="view-mode" data-value="${value}" aria-pressed="${value === this.viewMode}"><b>${label}</b></button>`;
+  viewButton(value, icon, label) {
+    return `<button type="button" data-action="view-mode" data-value="${value}" aria-pressed="${value === this.viewMode}">${this.iconLabel(icon, label)}</button>`;
+  }
+
+  iconLabel(icon, label) {
+    return `<b><span class="tool-icon" aria-hidden="true">${icon}</span>${label}</b>`;
   }
 
   showNotice(message) {
