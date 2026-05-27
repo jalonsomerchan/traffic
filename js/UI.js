@@ -16,9 +16,11 @@ const MESSAGES = {
     map: "Mapa",
     month: "Mes",
     nextMonth: "Siguiente cobro",
+    discontent: "Descontento",
     balance: "Balance mensual",
     populationIncome: "Impuestos de habitantes",
     tripIncome: "Tasas por uso de vías",
+    discontentPenalty: "Pérdida por descontento",
     roadMaintenance: "Mantenimiento de vías",
     repairCost: "Obras y reparaciones",
     netResult: "Resultado neto",
@@ -81,9 +83,11 @@ const MESSAGES = {
     map: "Map",
     month: "Month",
     nextMonth: "Next payout",
+    discontent: "Discontent",
     balance: "Monthly balance",
     populationIncome: "Resident taxes",
     tripIncome: "Road usage fees",
+    discontentPenalty: "Discontent loss",
     roadMaintenance: "Road maintenance",
     repairCost: "Works and repairs",
     netResult: "Net result",
@@ -196,6 +200,7 @@ export class UI {
         ${this.statRow(t("map"), "28 x 28", "map")}
         ${this.statRow(t("month"), "1", "month")}
         ${this.statRow(t("nextMonth"), "0%", "monthProgress")}
+        ${this.statRow(t("discontent"), "0%", "discontent")}
       </section>
       <section class="statement" data-statement hidden aria-live="polite"></section>
       <section class="hud__tools" aria-label="${t("tool")}">
@@ -246,7 +251,7 @@ export class UI {
   }
 
   /** Refresca métricas sin reconstruir todo el DOM. */
-  update({ budget, vehicles, housing, roads, map, month, monthProgress, statement }) {
+  update({ budget, vehicles, housing, roads, map, month, monthProgress, discontent, statement }) {
     this.root.querySelector('[data-stat="budget"]').textContent = `$${Math.floor(budget)}`;
     this.root.querySelector('[data-stat="vehicles"]').textContent = vehicles;
     this.root.querySelector('[data-stat="housing"]').textContent = housing;
@@ -254,6 +259,7 @@ export class UI {
     this.root.querySelector('[data-stat="map"]').textContent = map;
     this.root.querySelector('[data-stat="month"]').textContent = month;
     this.root.querySelector('[data-stat="monthProgress"]').textContent = `${Math.floor(monthProgress * 100)}%`;
+    this.root.querySelector('[data-stat="discontent"]').textContent = `${Math.floor((discontent?.value ?? 0) * 100)}%`;
     this.updateStatement(statement);
   }
 
@@ -265,10 +271,12 @@ export class UI {
     }
     panel.hidden = false;
     const t = this.t.bind(this);
+    const discontentDetail = `${Math.floor((statement.discontent ?? 0) * 100)}%`;
     panel.innerHTML = `
       <strong>${t("balance")} ${statement.month}</strong>
       ${this.statementRow(t("populationIncome"), statement.populationIncome, true, `${statement.housing} ${t("roomsSuffix")}`)}
       ${this.statementRow(t("tripIncome"), statement.tripIncome, true, `${statement.completedTrips} ${t("tripsSuffix")}`)}
+      ${this.statementRow(t("discontentPenalty"), statement.discontentPenalty ?? 0, false, discontentDetail)}
       ${this.statementRow(t("roadMaintenance"), statement.roadMaintenance, false, `${statement.roads} ${t("roadsSuffix")}`)}
       ${this.statementRow(t("repairCost"), statement.repairCost, false, `${statement.repairCount} ${t("repairsSuffix")}`)}
       ${this.statementRow(t("netResult"), statement.balance, statement.balance >= 0)}
