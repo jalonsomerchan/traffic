@@ -6,6 +6,7 @@ import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
 import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
+import { SIMULATION_CONFIG } from "./SimulationConfig.js";
 
 const canvas = document.querySelector("#game");
 const hud = document.querySelector("#hud");
@@ -32,6 +33,8 @@ const state = {
   dragStart: null,
   dragMoved: false,
   timeScale: 1,
+  incidentDiscontent: 0,
+  blockedRouteNoticeTimer: 0,
   discontent: calculateDiscontent(roadManager, 0),
 };
 
@@ -89,6 +92,7 @@ const ui = new UI(hud, {
   },
 });
 
+roadManager.addEventListener("traffic-incident", (event) => handleTrafficIncident(event.detail));
 seedStarterCity();
 canvas.addEventListener("pointerdown", handlePointerDown);
 canvas.addEventListener("pointermove", handlePointerMove);
@@ -108,7 +112,8 @@ function loop(now) {
     roadManager.update(deltaSeconds, trafficCounts);
     updateRoadWorks(roadManager, deltaSeconds);
     roadManager.growCity(deltaSeconds);
-    state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
+    decayIncidentPressure(deltaSeconds);
+    state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length, state.incidentDiscontent);
     state.monthTimer += deltaSeconds;
     if (state.monthTimer >= state.monthLengthSeconds) {
       state.monthTimer -= state.monthLengthSeconds;
@@ -134,6 +139,25 @@ function loop(now) {
     statement: state.lastStatement,
   });
   requestAnimationFrame(loop);
+}
+
+function handleTrafficIncident(detail) {
+  if (detail?.type === "detour") {
+    state.incidentDiscontent = Math.min(1, state.incidentDiscontent + SIMULATION_CONFIG.trafficIncidents.detourDiscontent);
+    return;
+  }
+  if (detail?.type === "blocked-route") {
+    state.incidentDiscontent = Math.min(1, state.incidentDiscontent + SIMULATION_CONFIG.trafficIncidents.blockedRouteDiscontent);
+    if (state.blockedRouteNoticeTimer <= 0) {
+      ui.showNotice(SIMULATION_CONFIG.trafficIncidents.blockedRouteNotice);
+      state.blockedRouteNoticeTimer = 2.5;
+    }
+  }
+}
+
+function decayIncidentPressure(deltaSeconds) {
+  state.incidentDiscontent = Math.max(0, state.incidentDiscontent - deltaSeconds * SIMULATION_CONFIG.trafficIncidents.incidentDecayPerSecond);
+  state.blockedRouteNoticeTimer = Math.max(0, state.blockedRouteNoticeTimer - deltaSeconds);
 }
 
 /** Inicia pan de cámara o selección de celda según el gesto del jugador. */
@@ -284,6 +308,8 @@ function resetGame() {
   state.monthTimer = 0;
   state.lastStatement = null;
   state.selectedCell = null;
+  state.incidentDiscontent = 0;
+  state.blockedRouteNoticeTimer = 0;
   grid.width = 28;
   grid.height = 28;
   grid.cells.clear();
@@ -293,8 +319,10 @@ function resetGame() {
   trafficSystem.completedTrips = 0;
   trafficSystem.spawnTimer = 0;
   trafficSystem.edgeSpawnTimer = 0;
+  trafficSystem.detours = 0;
+  trafficSystem.blockedRoutes = 0;
   seedStarterCity();
-  state.discontent = calculateDiscontent(roadManager, 0);
+  state.discontent = calculateDiscontent(roadManager, 0, state.incidentDiscontent);
 }
 
 /** Liquida ingresos y gastos en bloque para que la economía sea legible. */
@@ -302,7 +330,7 @@ function settleMonth() {
   const housing = grid.getHousingCapacity();
   const completedTrips = trafficSystem.completedTrips;
   const costs = roadManager.getMonthlyCostBreakdown();
-  const discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
+  const discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length, state.incidentDiscontent);
   const basePopulationIncome = Math.floor(housing * MONTHLY_RESIDENT_TAX);
   const baseTripIncome = trafficSystem.consumeTaxRevenue();
   const populationIncome = applyDiscontentPenalty(basePopulationIncome, discontent);
@@ -341,6 +369,7 @@ function serializeGame() {
     timeScale: state.timeScale,
     viewMode: renderer.viewMode,
     camera: renderer.camera,
+    incidentDiscontent: state.incidentDiscontent,
     grid: grid.toJSON(),
     roads: roadManager.toJSON(),
     traffic: trafficSystem.toJSON(),
@@ -355,6 +384,8 @@ function hydrateGame(saved) {
   state.lastStatement = saved.lastStatement ?? null;
   state.timeScale = saved.timeScale ?? state.timeScale;
   state.running = state.timeScale > 0;
+  state.incidentDiscontent = saved.incidentDiscontent ?? 0;
+  state.blockedRouteNoticeTimer = 0;
   renderer.viewMode = saved.viewMode ?? renderer.viewMode;
   if (saved.camera) renderer.camera = { ...renderer.camera, ...saved.camera };
   grid.width = saved.grid?.width ?? grid.width;
@@ -372,6 +403,8 @@ function hydrateGame(saved) {
   trafficSystem.completedTrips = saved.traffic?.completedTrips ?? 0;
   trafficSystem.edgeSpawnTimer = saved.traffic?.edgeSpawnTimer ?? 0;
   trafficSystem.spawnTimer = saved.traffic?.spawnTimer ?? 0;
+  trafficSystem.detours = saved.traffic?.detours ?? 0;
+  trafficSystem.blockedRoutes = saved.traffic?.blockedRoutes ?? 0;
   trafficSystem.pathCache.clear();
-  state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length);
+  state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length, state.incidentDiscontent);
 }

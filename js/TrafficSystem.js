@@ -14,6 +14,8 @@ export class TrafficSystem {
     this.edgeSpawnTimer = 0;
     this.completedTrips = 0;
     this.taxPerTrip = 18;
+    this.detours = 0;
+    this.blockedRoutes = 0;
     this.roadManager.addEventListener("network-changed", (event) => this.handleNetworkChanged(event.detail));
   }
 
@@ -75,11 +77,13 @@ export class TrafficSystem {
       vehicle.speed = this.roadManager.getEffectiveSpeed(road);
       if (vehicle.speed <= 0) {
         const destination = vehicle.path[vehicle.path.length - 1];
-        const reroute = this.findPath(current, destination);
+        const reroute = this.findAlternativePath(current, destination, current);
         if (reroute.length > 1) {
-          vehicle.path = reroute;
-          vehicle.index = 0;
-          vehicle.progress = 0;
+          this.applyReroute(vehicle, reroute);
+        } else {
+          this.vehicles.splice(i, 1);
+          this.blockedRoutes += 1;
+          this.dispatchIncident("blocked-route", current);
         }
         continue;
       }
@@ -99,11 +103,7 @@ export class TrafficSystem {
 
   /** Usado por demolición: no se puede quitar una vía con vehículos sobre ella. */
   hasVehicleOnRoad(x, y) {
-    return this.vehicles.some((vehicle) => {
-      const current = vehicle.path[vehicle.index];
-      const next = vehicle.path[Math.min(vehicle.index + 1, vehicle.path.length - 1)];
-      return (current?.x === x && current?.y === y) || (next?.x === x && next?.y === y);
-    });
+    return this.vehicles.some((vehicle) => vehicleTouchesRoad(vehicle, x, y));
   }
 
   /** Agrupa vehículos por celda para degradación, heatmap y congestión. */
@@ -117,25 +117,61 @@ export class TrafficSystem {
     return counts;
   }
 
-  /** Responde a cierres/reparaciones quitando tráfico activo de la celda bloqueada. */
+  /** Responde a cierres buscando rutas alternativas antes de retirar vehículos. */
   handleNetworkChanged(detail) {
     this.pathCache.clear();
     const road = detail?.road;
     if (!road) return;
-    const shouldClear =
-      detail.type === "road-removed" ||
-      road.closedForRepair ||
-      road.trafficClosed ||
-      this.roadManager.getEffectiveSpeed(road) <= 0;
-    if (shouldClear) this.clearVehiclesFromRoad(road.x, road.y);
+    if (detail.type === "road-removed") {
+      this.clearVehiclesFromRoad(road.x, road.y);
+      return;
+    }
+    const shouldReroute = road.closedForRepair || road.closedForConstruction || road.closedForUpgrade || road.trafficClosed || this.roadManager.getEffectiveSpeed(road) <= 0;
+    if (shouldReroute) this.rerouteVehiclesFromRoad(road.x, road.y);
+  }
+
+  rerouteVehiclesFromRoad(x, y) {
+    for (let index = this.vehicles.length - 1; index >= 0; index -= 1) {
+      const vehicle = this.vehicles[index];
+      if (!vehicleTouchesRoad(vehicle, x, y)) continue;
+
+      const current = vehicle.path[vehicle.index];
+      const destination = vehicle.path[vehicle.path.length - 1];
+      const alternative = this.findAlternativePath(current, destination, { x, y });
+      if (alternative.length > 1) {
+        this.applyReroute(vehicle, alternative);
+      } else {
+        this.vehicles.splice(index, 1);
+        this.blockedRoutes += 1;
+        this.dispatchIncident("blocked-route", current);
+      }
+    }
+  }
+
+  applyReroute(vehicle, path) {
+    vehicle.path = path;
+    vehicle.index = 0;
+    vehicle.progress = 0;
+    this.detours += 1;
+    this.dispatchIncident("detour", path[0]);
   }
 
   clearVehiclesFromRoad(x, y) {
-    this.vehicles = this.vehicles.filter((vehicle) => {
-      const current = vehicle.path[vehicle.index];
-      const next = vehicle.path[Math.min(vehicle.index + 1, vehicle.path.length - 1)];
-      return !((current?.x === x && current?.y === y) || (next?.x === x && next?.y === y));
-    });
+    this.vehicles = this.vehicles.filter((vehicle) => !vehicleTouchesRoad(vehicle, x, y));
+  }
+
+  consumeTrafficIncidents() {
+    const incidents = {
+      detours: this.detours,
+      blockedRoutes: this.blockedRoutes,
+    };
+    this.detours = 0;
+    this.blockedRoutes = 0;
+    return incidents;
+  }
+
+  dispatchIncident(type, cell) {
+    this.roadManager.dispatchEvent(new CustomEvent("traffic-incident", { detail: { type, cell } }));
   }
 
   /** Entrega al bucle principal los impuestos generados por viajes completados. */
@@ -159,13 +195,32 @@ export class TrafficSystem {
     return best;
   }
 
+  findAlternativePath(start, goal, blockedCell = null) {
+    if (!start || !goal) return [];
+    const startRoad = this.roadManager.getRoad(start.x, start.y);
+    if (this.roadManager.getEffectiveSpeed(startRoad) > 0) {
+      return this.findPath(start, goal, { bypassCache: true });
+    }
+
+    const starts = this.grid.getNeighbors(start.x, start.y)
+      .map((neighbor) => neighbor.road)
+      .filter((road) => road && this.roadManager.getEffectiveSpeed(road) > 0 && !sameCell(road, blockedCell));
+
+    let bestPath = [];
+    for (const road of starts) {
+      const candidate = this.findPath(road, goal, { bypassCache: true });
+      if (candidate.length > 1 && (!bestPath.length || candidate.length < bestPath.length)) bestPath = candidate;
+    }
+    return bestPath;
+  }
+
   /**
    * A* sobre celdas con carretera.
    * El coste penaliza reparación, mala salud, semáforos y congestión actual.
    */
-  findPath(start, goal) {
+  findPath(start, goal, options = {}) {
     const cacheKey = `${start.x},${start.y}->${goal.x},${goal.y}`;
-    if (this.pathCache.has(cacheKey)) return this.pathCache.get(cacheKey);
+    if (!options.bypassCache && this.pathCache.has(cacheKey)) return this.pathCache.get(cacheKey);
 
     const open = [{ x: start.x, y: start.y, cost: 0, score: 0, parent: null }];
     const visited = new Map();
@@ -179,7 +234,7 @@ export class TrafficSystem {
 
       if (current.x === goal.x && current.y === goal.y) {
         const path = reconstructPath(current);
-        this.pathCache.set(cacheKey, path);
+        if (!options.bypassCache) this.pathCache.set(cacheKey, path);
         return path;
       }
 
@@ -210,8 +265,20 @@ export class TrafficSystem {
       completedTrips: this.completedTrips,
       spawnTimer: this.spawnTimer,
       edgeSpawnTimer: this.edgeSpawnTimer,
+      detours: this.detours,
+      blockedRoutes: this.blockedRoutes,
     };
   }
+}
+
+function vehicleTouchesRoad(vehicle, x, y) {
+  const current = vehicle.path[vehicle.index];
+  const next = vehicle.path[Math.min(vehicle.index + 1, vehicle.path.length - 1)];
+  return (current?.x === x && current?.y === y) || (next?.x === x && next?.y === y);
+}
+
+function sameCell(a, b) {
+  return a && b && a.x === b.x && a.y === b.y;
 }
 
 function reconstructPath(node) {
