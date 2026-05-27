@@ -9,6 +9,7 @@ import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
 import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
 import { SIMULATION_CONFIG } from "./SimulationConfig.js";
+import { runSecretCommand } from "./SecretCommands.js";
 
 installRoadSkins(Renderer);
 installCityGrowthPolicy(RoadManager);
@@ -105,6 +106,7 @@ canvas.addEventListener("pointerup", handlePointerUp);
 canvas.addEventListener("pointercancel", handlePointerUp);
 canvas.addEventListener("wheel", handleWheel, { passive: false });
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+window.addEventListener("keydown", handleSecretCommandShortcut);
 requestAnimationFrame(loop);
 
 /** Orquesta update/draw, economía, degradación y crecimiento urbano. */
@@ -163,6 +165,18 @@ function handleTrafficIncident(detail) {
 function decayIncidentPressure(deltaSeconds) {
   state.incidentDiscontent = Math.max(0, state.incidentDiscontent - deltaSeconds * SIMULATION_CONFIG.trafficIncidents.incidentDecayPerSecond);
   state.blockedRouteNoticeTimer = Math.max(0, state.blockedRouteNoticeTimer - deltaSeconds);
+}
+
+function handleSecretCommandShortcut(event) {
+  if (event.key.toLowerCase() !== "q" || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target;
+  if (target?.matches?.("input, textarea, select, button")) return;
+  if (!window.confirm("¿Quieres introducir un truco?")) return;
+
+  const code = window.prompt("Código de truco");
+  if (code === null) return;
+  const applied = runSecretCommand(code, { state, grid, ui });
+  if (!applied) ui.showNotice("Truco no reconocido");
 }
 
 /** Inicia pan de cámara o selección de celda según el gesto del jugador. */
