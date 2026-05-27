@@ -1,4 +1,5 @@
 import { ROAD_TYPES } from "./RoadManager.js";
+import { SIMULATION_CONFIG } from "./SimulationConfig.js";
 
 export class TrafficSystem {
   /**
@@ -21,18 +22,31 @@ export class TrafficSystem {
 
   /** Tick principal: crea viajes, mueve vehículos y devuelve conteos por vía. */
   update(deltaSeconds) {
-    this.spawnTimer += deltaSeconds;
-    this.edgeSpawnTimer += deltaSeconds;
-    if (this.spawnTimer > 0.55) {
+    const demand = this.getHousingTrafficDemand();
+    this.spawnTimer += deltaSeconds * demand.internalFactor;
+    this.edgeSpawnTimer += deltaSeconds * demand.externalFactor;
+    if (this.spawnTimer > SIMULATION_CONFIG.trafficDemand.internalSpawnIntervalSeconds) {
       this.spawnTimer = 0;
       this.spawnVehicleFromDemand();
     }
-    if (this.edgeSpawnTimer > 0.22) {
+    if (this.edgeSpawnTimer > SIMULATION_CONFIG.trafficDemand.externalSpawnIntervalSeconds) {
       this.edgeSpawnTimer = 0;
       this.spawnVehicleFromEdgeConnection();
     }
     this.moveVehicles(deltaSeconds);
     return this.collectTrafficCounts();
+  }
+
+  getHousingTrafficDemand() {
+    const housing = this.grid.getHousingCapacity();
+    const config = SIMULATION_CONFIG.trafficDemand;
+    return {
+      housing,
+      internalFactor: clamp01(housing / Math.max(1, config.housingForFullInternalTraffic)),
+      externalFactor: housing > 0
+        ? Math.max(config.minimumExternalTrafficFactor, clamp01(housing / Math.max(1, config.housingForFullExternalTraffic)))
+        : config.minimumExternalTrafficFactor * 0.25,
+    };
   }
 
   /** Convierte demanda de edificios cercanos a carreteras en vehículos nuevos. */
@@ -367,4 +381,8 @@ function weightedPick(items, weight) {
 
 function pickVehicleColor() {
   return ["#f7f0d4", "#e2533f", "#3977d8", "#f0b33f", "#2f3c46"][Math.floor(Math.random() * 5)];
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
 }
