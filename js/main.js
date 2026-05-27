@@ -3,16 +3,19 @@ import { ROAD_TYPES, RoadManager } from "./RoadManager.js";
 import { TrafficSystem } from "./TrafficSystem.js";
 import { Renderer } from "./Renderer.js";
 import { installRoadSkins } from "./RoadSkins.js";
+import { installTreeRenderer } from "./TreeRenderer.js";
 import { installCityGrowthPolicy } from "./CityGrowthPolicy.js";
-import { UI, getRoadCost } from "./UI.js";
+import { UI } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
 import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
 import { buildRoadFootprint, canBuildRoadFootprint, getRoadFootprintCost, makeFootprintSelection } from "./RoadFootprints.js";
+import { getProtectedStarterCells, getTreeClearCost, seedTrees, startTreeClearing, TREE_TOOL, updateTreeClearing } from "./Trees.js";
 import { SIMULATION_CONFIG } from "./SimulationConfig.js";
 import { runSecretCommand } from "./SecretCommands.js";
 
 installRoadSkins(Renderer);
+installTreeRenderer(Renderer);
 installCityGrowthPolicy(RoadManager);
 
 const canvas = document.querySelector("#game");
@@ -93,6 +96,7 @@ const ui = new UI(hud, {
   },
   onExpand: () => {
     grid.expand(6);
+    seedTrees(grid, getProtectedStarterCells());
   },
   onTimeScaleChange: (timeScale) => {
     state.timeScale = timeScale;
@@ -102,6 +106,7 @@ const ui = new UI(hud, {
 
 roadManager.addEventListener("traffic-incident", (event) => handleTrafficIncident(event.detail));
 seedStarterCity();
+seedTrees(grid, getProtectedStarterCells());
 canvas.addEventListener("pointerdown", handlePointerDown);
 canvas.addEventListener("pointermove", handlePointerMove);
 canvas.addEventListener("pointerup", handlePointerUp);
@@ -111,7 +116,6 @@ canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 window.addEventListener("keydown", handleSecretCommandShortcut);
 requestAnimationFrame(loop);
 
-/** Orquesta update/draw, economía, degradación y crecimiento urbano. */
 function loop(now) {
   const deltaSeconds = Math.min(0.05, (now - state.lastTime) / 1000) * state.timeScale;
   state.lastTime = now;
@@ -120,6 +124,7 @@ function loop(now) {
     const trafficCounts = trafficSystem.update(deltaSeconds);
     roadManager.update(deltaSeconds, trafficCounts);
     updateRoadWorks(roadManager, deltaSeconds);
+    updateTreeClearing(grid, deltaSeconds);
     roadManager.growCity(deltaSeconds);
     decayIncidentPressure(deltaSeconds);
     state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length, state.incidentDiscontent);
@@ -141,6 +146,7 @@ function loop(now) {
     vehicles: trafficSystem.vehicles.length,
     housing: grid.getHousingCapacity(),
     roads: roadManager.roads.size,
+    trees: getTreeCount(),
     map: `${grid.width} x ${grid.height}`,
     month: state.month,
     monthProgress: state.monthTimer / state.monthLengthSeconds,
@@ -181,7 +187,6 @@ function handleSecretCommandShortcut(event) {
   if (!applied) ui.showNotice("Truco no reconocido");
 }
 
-/** Inicia pan de cámara o selección de celda según el gesto del jugador. */
 function handlePointerDown(event) {
   canvas.setPointerCapture(event.pointerId);
   updateHoverCell(event);
@@ -190,7 +195,6 @@ function handlePointerDown(event) {
   state.dragStart = { x: event.clientX, y: event.clientY, button: event.button };
 }
 
-/** Arrastrar mueve la cámara para navegar por planos grandes. */
 function handlePointerMove(event) {
   if (!state.dragging) updateHoverCell(event);
   if (!state.dragging || !state.dragStart) return;
@@ -202,7 +206,6 @@ function handlePointerMove(event) {
   state.dragStart = { ...state.dragStart, x: event.clientX, y: event.clientY };
 }
 
-/** Un tap construye; un drag solo desplaza el plano. */
 function handlePointerUp(event) {
   if (!state.dragging) return;
   state.dragging = false;
@@ -210,18 +213,21 @@ function handlePointerUp(event) {
   if (!state.dragMoved && event.button !== 2) handleMapAction(event);
 }
 
-/** Zoom con rueda del ratón o trackpad sobre el plano. */
 function handleWheel(event) {
   event.preventDefault();
   renderer.setZoom(renderer.camera.zoom + (event.deltaY > 0 ? -0.08 : 0.08));
 }
 
-/** Convierte clicks/taps sobre canvas en acciones de construcción o control. */
 function handleMapAction(event) {
   if (!state.running) return;
   const cell = getPointerCell(event);
   if (!grid.isInside(cell.x, cell.y)) return;
   state.selectedCell = makeHoverSelection(cell.x, cell.y);
+
+  if (state.tool === TREE_TOOL) {
+    clearTreeAt(cell.x, cell.y, event.clientX, event.clientY);
+    return;
+  }
 
   if (state.tool === "demolish") {
     const building = grid.demolishBuilding(cell.x, cell.y);
@@ -258,7 +264,7 @@ function handleMapAction(event) {
     if (!road) {
       const cost = getRoadFootprintCost(state.tool);
       if (!canBuildRoadFootprint(grid, roadManager, cell.x, cell.y, state.tool)) {
-        ui.showNotice("No cabe esta carretera aquí");
+        ui.showNotice("Tala los árboles antes de construir");
         return;
       }
       if (state.budget >= cost) {
@@ -302,6 +308,27 @@ function handleMapAction(event) {
   if (road) roadManager.setSpeedLimit(cell.x, cell.y, state.speedLimit);
 }
 
+function clearTreeAt(x, y, clientX, clientY) {
+  const cost = getTreeClearCost();
+  const cell = grid.getCell(x, y);
+  if (!cell?.tree) {
+    ui.showNotice("No hay árbol que talar");
+    return;
+  }
+  if (cell.tree.clearing) {
+    ui.showNotice("La tala ya está en curso");
+    return;
+  }
+  if (state.budget < cost) {
+    ui.showNotice("No hay presupuesto suficiente");
+    return;
+  }
+  if (startTreeClearing(grid, x, y)) {
+    state.budget -= cost;
+    ui.showMoney(-cost, clientX, clientY);
+  }
+}
+
 function updateHoverCell(event) {
   const cell = getPointerCell(event);
   state.hoverCell = grid.isInside(cell.x, cell.y) ? makeHoverSelection(cell.x, cell.y) : null;
@@ -319,7 +346,6 @@ function getPointerCell(event) {
   return grid.screenToIso(screenX, screenY, renderer.origin, renderer.camera.zoom);
 }
 
-/** Crea una red mínima inicial con la peor carretera y sin semáforos. */
 function seedStarterCity() {
   for (let x = 0; x <= 12; x += 1) roadManager.buildRoad(x, 8, "dirt");
   for (let y = 5; y <= 12; y += 1) roadManager.buildRoad(8, y, "dirt");
@@ -328,7 +354,6 @@ function seedStarterCity() {
   grid.setBuilding(9, 9, { kind: 2, demand: 2, createdAt: performance.now() });
 }
 
-/** Limpia partida, preservando el mapa grande y una ciudad semilla. */
 function resetGame() {
   state.budget = 2400;
   state.month = 1;
@@ -349,10 +374,10 @@ function resetGame() {
   trafficSystem.detours = 0;
   trafficSystem.blockedRoutes = 0;
   seedStarterCity();
+  seedTrees(grid, getProtectedStarterCells());
   state.discontent = calculateDiscontent(roadManager, 0, state.incidentDiscontent);
 }
 
-/** Liquida ingresos y gastos en bloque para que la economía sea legible. */
 function settleMonth() {
   const housing = grid.getHousingCapacity();
   const completedTrips = trafficSystem.completedTrips;
@@ -386,7 +411,6 @@ function settleMonth() {
   ui.showMoney(balance, window.innerWidth * 0.46, window.innerHeight * 0.28);
 }
 
-/** Reúne todos los subsistemas en un JSON completo y portable. */
 function serializeGame() {
   return {
     budget: state.budget,
@@ -403,7 +427,6 @@ function serializeGame() {
   };
 }
 
-/** Restaura partida manteniendo referencias internas coherentes. */
 function hydrateGame(saved) {
   state.budget = saved.budget ?? state.budget;
   state.month = saved.month ?? state.month;
@@ -424,6 +447,8 @@ function hydrateGame(saved) {
     Object.assign(restored, road);
   }
   for (const cell of saved.grid?.cells ?? []) {
+    const restored = grid.getCell(cell.x, cell.y);
+    if (restored && cell.tree) restored.tree = cell.tree;
     if (cell.building) grid.setBuilding(cell.x, cell.y, cell.building);
   }
   trafficSystem.vehicles = saved.traffic?.vehicles ?? [];
@@ -434,4 +459,8 @@ function hydrateGame(saved) {
   trafficSystem.blockedRoutes = saved.traffic?.blockedRoutes ?? 0;
   trafficSystem.pathCache.clear();
   state.discontent = calculateDiscontent(roadManager, trafficSystem.vehicles.length, state.incidentDiscontent);
+}
+
+function getTreeCount() {
+  return [...grid.cells.values()].filter((cell) => cell.tree).length;
 }
