@@ -1,3 +1,5 @@
+import { getRoadWorkVisualState } from "./RoadWorkVisuals.js";
+
 const ROAD_LAYOUTS = {
   dirt: { road: "#9a6a3d", sidewalk: "#7b5635", line: "rgba(255, 232, 176, 0.26)", lineStyle: "none" },
   gravelRoad: { road: "#8a8173", sidewalk: "#b7aa96", line: "rgba(255,255,255,0.26)", lineStyle: "speckle" },
@@ -41,14 +43,17 @@ function drawRoadTile(renderer, ctx, screen, road, roadManager) {
   const zoom = renderer.camera.zoom;
   const points = getDiamondPoints(renderer, screen);
   const connected = getConnectedSides(renderer, road, roadManager);
-  const inset = Math.max(4, 5.5 * zoom);
+  const inset = Math.max(5, 6.5 * zoom);
+  const workState = getRoadWorkVisualState(road);
 
   ctx.save();
-  drawPolygon(ctx, [points.top, points.right, points.bottom, points.left], layout.road);
+  drawPolygon(ctx, [points.top, points.right, points.bottom, points.left], workState ? shade(layout.road, -12) : layout.road);
   drawTileShading(ctx, points, zoom);
   drawOutsideSidewalks(ctx, points, connected, layout, inset);
   drawOutsideCurbs(ctx, points, connected, layout, zoom);
+  drawSidewalkHighlights(ctx, points, connected, layout, inset, zoom);
   drawCenterMarkings(ctx, screen, points, connected, layout, road, zoom);
+  if (workState) drawRoadWorkOverlay(ctx, screen, points, connected, workState, zoom);
   ctx.restore();
 }
 
@@ -99,6 +104,115 @@ function drawOutsideCurbs(ctx, points, connected, layout, zoom) {
     ctx.lineTo(points[bName].x, points[bName].y);
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function drawSidewalkHighlights(ctx, points, connected, layout, inset, zoom) {
+  ctx.save();
+  ctx.lineWidth = Math.max(1, 0.8 * zoom);
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  for (const side of Object.keys(SIDE_POINTS)) {
+    if (connected[side]) continue;
+    const [aName, bName] = SIDE_POINTS[side];
+    const center = averagePoint(points.top, points.right, points.bottom, points.left);
+    const a = moveTowards(points[aName], center, inset * 0.55);
+    const b = moveTowards(points[bName], center, inset * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  if (layout.lineStyle === "pavers" || layout.lineStyle === "crosswalk") drawSidewalkPaving(ctx, points, connected, inset, zoom);
+  ctx.restore();
+}
+
+function drawSidewalkPaving(ctx, points, connected, inset, zoom) {
+  ctx.strokeStyle = "rgba(80, 66, 50, 0.18)";
+  ctx.lineWidth = Math.max(1, 0.65 * zoom);
+  const center = averagePoint(points.top, points.right, points.bottom, points.left);
+  for (const side of Object.keys(SIDE_POINTS)) {
+    if (connected[side]) continue;
+    const [aName, bName] = SIDE_POINTS[side];
+    for (const t of [0.25, 0.5, 0.75]) {
+      const edge = lerpPoint(points[aName], points[bName], t);
+      const inner = moveTowards(edge, center, inset * 0.86);
+      ctx.beginPath();
+      ctx.moveTo(edge.x, edge.y);
+      ctx.lineTo(inner.x, inner.y);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawRoadWorkOverlay(ctx, screen, points, connected, workState, zoom) {
+  ctx.save();
+  drawWorkTint(ctx, points, workState);
+  drawWorkBarriers(ctx, points, connected, zoom);
+  drawWorkProgressBadge(ctx, screen, workState, zoom);
+  ctx.restore();
+}
+
+function drawWorkTint(ctx, points, workState) {
+  ctx.globalAlpha = workState.type === "repair" ? 0.2 : 0.28;
+  drawPolygon(ctx, [points.top, points.right, points.bottom, points.left], workState.type === "repair" ? "#ffd166" : "#f59e0b");
+  ctx.globalAlpha = 1;
+}
+
+function drawWorkBarriers(ctx, points, connected, zoom) {
+  ctx.save();
+  ctx.lineWidth = Math.max(2, 2.2 * zoom);
+  ctx.strokeStyle = "rgba(255, 222, 96, 0.95)";
+  ctx.setLineDash([5 * zoom, 4 * zoom]);
+  for (const side of Object.keys(SIDE_POINTS)) {
+    if (connected[side]) continue;
+    const [aName, bName] = SIDE_POINTS[side];
+    const a = points[aName];
+    const b = points[bName];
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(42, 34, 20, 0.94)";
+  for (const side of Object.keys(SIDE_POINTS)) {
+    if (!connected[side]) continue;
+    const marker = sideMidpoint(points, side);
+    ctx.beginPath();
+    ctx.arc(marker.x, marker.y, 3.5 * zoom, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawWorkProgressBadge(ctx, screen, workState, zoom) {
+  const radius = Math.max(9, 10 * zoom);
+  const x = screen.x;
+  const y = screen.y - 24 * zoom;
+  ctx.save();
+  ctx.fillStyle = "rgba(20, 24, 28, 0.88)";
+  ctx.beginPath();
+  ctx.roundRect(x - 23 * zoom, y - 10 * zoom, 46 * zoom, 20 * zoom, 7 * zoom);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = Math.max(1, 1.2 * zoom);
+  ctx.beginPath();
+  ctx.arc(x - 12 * zoom, y, radius * 0.62, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = workState.type === "repair" ? "#34d399" : "#facc15";
+  ctx.lineWidth = Math.max(2, 2 * zoom);
+  ctx.beginPath();
+  ctx.arc(x - 12 * zoom, y, radius * 0.62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * workState.progress);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `${Math.max(7, 7.5 * zoom)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(Math.ceil(workState.remainingSeconds)), x - 12 * zoom, y);
+  ctx.font = `${Math.max(6, 6.5 * zoom)}px system-ui`;
+  ctx.fillText(workState.label, x + 10 * zoom, y);
   ctx.restore();
 }
 
