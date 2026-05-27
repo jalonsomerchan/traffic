@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { calculateDiscontent } from "../js/Discontent.js";
 import { Grid } from "../js/Grid.js";
-import { RoadManager } from "../js/RoadManager.js";
+import { ROAD_TYPES, RoadManager } from "../js/RoadManager.js";
 import { SIMULATION_CONFIG } from "../js/SimulationConfig.js";
 import { TrafficSystem } from "../js/TrafficSystem.js";
 import {
@@ -64,11 +64,11 @@ test("road upgrades close traffic and finish automatically after a longer work",
   assert.equal(road.health, 100);
 });
 
-test("road upgrade cost is lower than rebuilding but greater than zero", () => {
+test("road upgrade cost scales with the expanded catalog and stays below rebuilding", () => {
   const cost = getRoadUpgradeCost("dirt", "twoWay");
 
-  assert.ok(cost > 0);
-  assert.ok(cost < 180);
+  assert.ok(cost > ROAD_TYPES.dirt.buildCost);
+  assert.ok(cost < ROAD_TYPES.twoWay.buildCost);
 });
 
 test("discontent reduces income when traffic and degradation are high", () => {
