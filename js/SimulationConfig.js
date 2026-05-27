@@ -6,6 +6,12 @@ export const SIMULATION_CONFIG = {
     upgradeHealthPerSecond: 2,
     activeUpgradeMonthlyCostMultiplier: 28,
   },
+  treeWorks: {
+    clearCost: 85,
+    clearDurationSeconds: 14,
+    initialDensity: 0.18,
+    protectedStarterRadius: 2,
+  },
   trafficIncidents: {
     detourDiscontent: 0.018,
     blockedRouteDiscontent: 0.18,
