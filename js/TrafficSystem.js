@@ -64,27 +64,33 @@ export class TrafficSystem {
     this.vehicles.push({ path, index: 0, progress: 0, speed: 1, color: pickVehicleColor(), external: true });
   }
 
-  /** Avanza cada vehículo por su ruta usando la velocidad efectiva de la vía. */
+  /** Avanza cada vehículo, evitando entrar en vías cerradas y manteniendo esperas. */
   moveVehicles(deltaSeconds) {
     for (let i = this.vehicles.length - 1; i >= 0; i -= 1) {
       const vehicle = this.vehicles[i];
       const current = vehicle.path[vehicle.index];
+      const next = vehicle.path[Math.min(vehicle.index + 1, vehicle.path.length - 1)];
       if (!current) {
         this.vehicles.splice(i, 1);
         continue;
       }
+
+      if (vehicle.waitingFor) {
+        this.retryWaitingVehicle(vehicle);
+        vehicle.speed = 0;
+        continue;
+      }
+
+      const nextRoad = this.roadManager.getRoad(next?.x, next?.y);
+      if (next && !sameCell(current, next) && !this.canEnterRoad(nextRoad)) {
+        this.waitOrReroute(vehicle, next);
+        continue;
+      }
+
       const road = this.roadManager.getRoad(current.x, current.y);
-      vehicle.speed = this.roadManager.getEffectiveSpeed(road);
+      vehicle.speed = this.getVehicleSpeedForCurrentRoad(road, nextRoad);
       if (vehicle.speed <= 0) {
-        const destination = vehicle.path[vehicle.path.length - 1];
-        const reroute = this.findAlternativePath(current, destination, current);
-        if (reroute.length > 1) {
-          this.applyReroute(vehicle, reroute);
-        } else {
-          this.vehicles.splice(i, 1);
-          this.blockedRoutes += 1;
-          this.dispatchIncident("blocked-route", current);
-        }
+        this.waitOrReroute(vehicle, current);
         continue;
       }
       vehicle.progress += deltaSeconds * vehicle.speed * 1.35;
@@ -92,12 +98,67 @@ export class TrafficSystem {
       while (vehicle.progress >= 1) {
         vehicle.progress -= 1;
         vehicle.index += 1;
+        vehicle.waitingFor = null;
+        vehicle.waitNotified = false;
         if (vehicle.index >= vehicle.path.length - 1) {
           this.vehicles.splice(i, 1);
           this.completedTrips += 1;
           break;
         }
       }
+    }
+  }
+
+  getVehicleSpeedForCurrentRoad(road, nextRoad) {
+    const speed = this.roadManager.getEffectiveSpeed(road);
+    if (speed > 0) return speed;
+    if (this.isClosedButExitAllowed(road) && this.canEnterRoad(nextRoad)) return 0.55;
+    return 0;
+  }
+
+  isClosedButExitAllowed(road) {
+    return Boolean(road?.closedForRepair || road?.closedForConstruction || road?.closedForUpgrade || road?.trafficClosed);
+  }
+
+  canEnterRoad(road) {
+    return this.roadManager.getEffectiveSpeed(road) > 0;
+  }
+
+  waitOrReroute(vehicle, blockedCell) {
+    const current = vehicle.path[vehicle.index];
+    const destination = vehicle.path[vehicle.path.length - 1];
+    const reroute = this.findAlternativePath(current, destination, blockedCell);
+    if (reroute.length > 1) {
+      this.applyReroute(vehicle, reroute);
+      return;
+    }
+    this.keepVehicleWaiting(vehicle, blockedCell);
+  }
+
+  retryWaitingVehicle(vehicle) {
+    const current = vehicle.path[vehicle.index];
+    const destination = vehicle.path[vehicle.path.length - 1];
+    const blockedCell = vehicle.waitingFor;
+    const reroute = this.findAlternativePath(current, destination, blockedCell);
+    if (reroute.length > 1) {
+      this.applyReroute(vehicle, reroute);
+      return;
+    }
+    const blockedRoad = this.roadManager.getRoad(blockedCell.x, blockedCell.y);
+    if (this.canEnterRoad(blockedRoad)) {
+      vehicle.waitingFor = null;
+      vehicle.waitNotified = false;
+    }
+  }
+
+  keepVehicleWaiting(vehicle, blockedCell) {
+    vehicle.waitingFor = { x: blockedCell.x, y: blockedCell.y };
+    vehicle.progress = 0;
+    vehicle.speed = 0;
+    if (!vehicle.waitNotified) {
+      vehicle.waitNotified = true;
+      this.blockedRoutes += 1;
+      this.dispatchIncident("blocked-route", vehicle.path[vehicle.index]);
     }
   }
 
@@ -127,24 +188,14 @@ export class TrafficSystem {
       return;
     }
     const shouldReroute = road.closedForRepair || road.closedForConstruction || road.closedForUpgrade || road.trafficClosed || this.roadManager.getEffectiveSpeed(road) <= 0;
-    if (shouldReroute) this.rerouteVehiclesFromRoad(road.x, road.y);
+    if (shouldReroute) this.rerouteVehiclesBeforeRoad(road.x, road.y);
   }
 
-  rerouteVehiclesFromRoad(x, y) {
-    for (let index = this.vehicles.length - 1; index >= 0; index -= 1) {
-      const vehicle = this.vehicles[index];
-      if (!vehicleTouchesRoad(vehicle, x, y)) continue;
-
-      const current = vehicle.path[vehicle.index];
-      const destination = vehicle.path[vehicle.path.length - 1];
-      const alternative = this.findAlternativePath(current, destination, { x, y });
-      if (alternative.length > 1) {
-        this.applyReroute(vehicle, alternative);
-      } else {
-        this.vehicles.splice(index, 1);
-        this.blockedRoutes += 1;
-        this.dispatchIncident("blocked-route", current);
-      }
+  rerouteVehiclesBeforeRoad(x, y) {
+    for (const vehicle of this.vehicles) {
+      const next = vehicle.path[Math.min(vehicle.index + 1, vehicle.path.length - 1)];
+      if (!sameCell(next, { x, y })) continue;
+      this.waitOrReroute(vehicle, { x, y });
     }
   }
 
@@ -152,6 +203,8 @@ export class TrafficSystem {
     vehicle.path = path;
     vehicle.index = 0;
     vehicle.progress = 0;
+    vehicle.waitingFor = null;
+    vehicle.waitNotified = false;
     this.detours += 1;
     this.dispatchIncident("detour", path[0]);
   }
@@ -199,7 +252,7 @@ export class TrafficSystem {
     if (!start || !goal) return [];
     const startRoad = this.roadManager.getRoad(start.x, start.y);
     if (this.roadManager.getEffectiveSpeed(startRoad) > 0) {
-      return this.findPath(start, goal, { bypassCache: true });
+      return this.findPath(start, goal, { bypassCache: true, blockedCell });
     }
 
     const starts = this.grid.getNeighbors(start.x, start.y)
@@ -208,7 +261,7 @@ export class TrafficSystem {
 
     let bestPath = [];
     for (const road of starts) {
-      const candidate = this.findPath(road, goal, { bypassCache: true });
+      const candidate = this.findPath(road, goal, { bypassCache: true, blockedCell });
       if (candidate.length > 1 && (!bestPath.length || candidate.length < bestPath.length)) bestPath = candidate;
     }
     return bestPath;
@@ -241,7 +294,14 @@ export class TrafficSystem {
       for (const neighbor of this.grid.getNeighbors(current.x, current.y)) {
         const road = neighbor.road;
         const fromRoad = this.roadManager.getRoad(current.x, current.y);
-        if (!road || !this.roadManager.canTravel(fromRoad, road) || visited.has(this.grid.key(road.x, road.y))) continue;
+        if (
+          !road ||
+          sameCell(road, options.blockedCell) ||
+          !this.roadManager.canTravel(fromRoad, road) ||
+          visited.has(this.grid.key(road.x, road.y))
+        ) {
+          continue;
+        }
         const speed = Math.max(0.08, this.roadManager.getEffectiveSpeed(road));
         const trafficCost = 1 + road.traffic / Math.max(1, ROAD_TYPES[road.type].capacity);
         const nextCost = current.cost + trafficCost / speed;
