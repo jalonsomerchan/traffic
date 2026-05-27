@@ -42,6 +42,18 @@ export function updateRoadUpgrades(roadManager, deltaSeconds) {
   }
 }
 
+/** Coste mensual extra de obras de mejora activas, superior al coste de reparación. */
+export function getActiveUpgradeMonthlyCost(roadManager) {
+  let total = 0;
+  for (const road of roadManager.roads.values()) {
+    if (!road.closedForUpgrade) continue;
+    const current = ROAD_TYPES[road.type]?.maintenanceCost ?? 0;
+    const target = ROAD_TYPES[road.upgradeTargetType]?.maintenanceCost ?? current;
+    total += Math.max(current, target) * 28;
+  }
+  return Math.ceil(total);
+}
+
 function completeRoadUpgrade(roadManager, road) {
   const targetType = road.upgradeTargetType;
   if (ROAD_TYPES[targetType]) {
