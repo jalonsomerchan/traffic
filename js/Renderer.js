@@ -1,10 +1,7 @@
 import { ROAD_TYPES } from "./RoadManager.js";
 
 export class Renderer {
-  /**
-   * Dibuja el mundo isométrico en canvas.
-   * Mantiene Painter's Algorithm ordenando cada elemento por profundidad.
-   */
+  /** Dibuja el mundo isométrico en canvas y ordena por profundidad. */
   constructor(canvas, grid) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
@@ -16,13 +13,8 @@ export class Renderer {
     this.buildingsTransparent = false;
     this.buildingSheet = new Image();
     this.buildingSheet.src = "./assets/sprites/buildings-v2/sheet-transparent.png";
-    this.roadSheet = new Image();
-    this.roadSheet.src = "./assets/sprites/roads-v2/sheet-transparent.png";
-    this.connectionSheet = new Image();
-    this.connectionSheet.src = "./assets/sprites/road-connections/sheet-transparent.png";
   }
 
-  /** Ajusta el canvas a devicePixelRatio para render nítido y responsive. */
   resize() {
     const ratio = window.devicePixelRatio || 1;
     const width = Math.floor(this.canvas.clientWidth * ratio);
@@ -30,24 +22,20 @@ export class Renderer {
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
-      this.origin = { x: width / 2 + this.camera.x, y: 95 * ratio + this.camera.y };
     }
     this.origin = { x: width / 2 + this.camera.x, y: 95 * ratio + this.camera.y };
   }
 
-  /** Ajusta zoom con límites para que el mapa pueda alejarse y acercarse. */
   setZoom(zoom) {
     this.camera.zoom = Math.max(0.65, Math.min(2.8, zoom));
   }
 
-  /** Desplaza la cámara en pantalla; funciona con ratón, táctil y botones. */
   pan(dx, dy) {
     const ratio = window.devicePixelRatio || 1;
     this.camera.x += dx * ratio;
     this.camera.y += dy * ratio;
   }
 
-  /** Limpia pantalla, construye la lista de dibujo, ordena y pinta. */
   draw({ roadManager, trafficSystem, selectedCell, hoverCell }) {
     this.resize();
     const ctx = this.ctx;
@@ -60,10 +48,6 @@ export class Renderer {
     for (const item of drawables) item.draw(ctx);
   }
 
-  /**
-   * Crea drawables con depth/layer.
-   * La ordenación por x+y hace que objetos más al fondo se pinten primero.
-   */
   buildDrawList(roadManager, trafficSystem, selectedCell, hoverCell) {
     const items = [];
     for (let y = 0; y < this.grid.height; y += 1) {
@@ -98,6 +82,7 @@ export class Renderer {
     for (const vehicle of trafficSystem.vehicles) {
       const current = vehicle.path[vehicle.index];
       const next = vehicle.path[Math.min(vehicle.index + 1, vehicle.path.length - 1)];
+      if (!current || !next) continue;
       items.push({
         depth: lerp(current.x, next.x, vehicle.progress) + lerp(current.y, next.y, vehicle.progress) + 0.4,
         layer: 3,
@@ -107,7 +92,6 @@ export class Renderer {
     return items;
   }
 
-  /** Pinta una celda base y resalta la selección de herramienta. */
   drawTile(ctx, screen, state) {
     ctx.beginPath();
     this.diamond(ctx, screen.x, screen.y);
@@ -122,7 +106,6 @@ export class Renderer {
     ctx.stroke();
   }
 
-  /** Renderiza carreteras normales o coloreadas por intensidad de tráfico. */
   drawRoad(ctx, screen, road, roadManager) {
     ctx.beginPath();
     this.diamond(ctx, screen.x, screen.y);
@@ -131,143 +114,56 @@ export class Renderer {
     if (this.viewMode === "normal" || this.viewMode === "type") this.drawRoadTexture(ctx, screen, road);
     this.drawConnectionLines(ctx, screen, road, roadManager);
     this.drawRoadDamage(ctx, screen, road);
-    ctx.lineWidth = Math.max(1, 1.5 * this.camera.zoom);
-    ctx.strokeStyle = road.closedForRepair ? "#ffd166" : "rgba(255, 255, 255, 0.36)";
-    ctx.stroke();
     this.drawRoadMarkings(ctx, screen, road);
-
-    if (road.trafficLight) {
-      ctx.fillStyle = "#18211d";
-      ctx.fillRect(screen.x + 19 * this.camera.zoom, screen.y - 34 * this.camera.zoom, 5 * this.camera.zoom, 24 * this.camera.zoom);
-      ctx.fillStyle = road.trafficLight.phase === "green" ? "#35d47b" : "#e34b3f";
-      ctx.beginPath();
-      ctx.arc(screen.x + 22 * this.camera.zoom, screen.y - 36 * this.camera.zoom, 7 * this.camera.zoom, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    if (road.trafficLight) this.drawTrafficLight(ctx, screen, road);
   }
 
-  /** Superpone el atlas generado sin depender de él para la lógica. */
-  drawRoadSprite(ctx, screen, road, roadManager) {
-    const definition = ROAD_TYPES[road.type];
-    if (!definition) return;
-    const connectionIndex = this.getConnectionAtlasIndex(road, roadManager);
-    const size = 128;
-    const width = this.grid.tileWidth * this.camera.zoom;
-    const height = this.grid.tileHeight * 1.45 * this.camera.zoom;
-
-    ctx.save();
-    ctx.beginPath();
-    this.diamond(ctx, screen.x, screen.y);
-    ctx.clip();
-
-    if (this.roadSheet.complete && this.roadSheet.naturalWidth) {
-      const typeCol = definition.atlasIndex % 4;
-      const typeRow = Math.floor(definition.atlasIndex / 4);
-      ctx.globalAlpha = this.viewMode === "normal" ? 1 : 0.18;
-      ctx.drawImage(
-        this.roadSheet,
-        typeCol * size,
-        typeRow * size,
-        size,
-        size,
-        screen.x - width / 2,
-        screen.y - height / 2,
-        width,
-        height,
-      );
-    }
-
-    if (this.connectionSheet.complete && this.connectionSheet.naturalWidth && connectionIndex !== null && road.type !== "roundabout") {
-      const col = connectionIndex % 4;
-      const row = Math.floor(connectionIndex / 4);
-      ctx.globalAlpha = this.viewMode === "normal" ? 0.36 : 0.14;
-      ctx.drawImage(
-        this.connectionSheet,
-        col * size,
-        row * size,
-        size,
-        size,
-        screen.x - width / 2,
-        screen.y - height / 2,
-        width,
-        height,
-      );
-    } else {
-      this.drawProceduralRoadShape(ctx, screen, road, roadManager);
-    }
-    ctx.restore();
-    this.drawConnectionLines(ctx, screen, road, roadManager);
-    ctx.globalAlpha = 1;
-  }
-
-  /** Añade textura y bordes por tipo sin deformar la casilla isométrica. */
   drawRoadTexture(ctx, screen, road) {
     const zoom = this.camera.zoom;
+    if (road.type !== "dirt") return;
     ctx.save();
     ctx.beginPath();
     this.diamond(ctx, screen.x, screen.y);
     ctx.clip();
-
-    if (road.type === "dirt") {
-      ctx.strokeStyle = "rgba(78, 52, 30, 0.24)";
-      ctx.lineWidth = Math.max(1, zoom);
-      for (let offset = -24; offset <= 24; offset += 8) {
-        ctx.beginPath();
-        ctx.moveTo(screen.x - 38 * zoom, screen.y + offset * zoom);
-        ctx.lineTo(screen.x + 38 * zoom, screen.y + (offset + 8) * zoom);
-        ctx.stroke();
-      }
-    }
-
-    if (road.type === "stonePath" || road.type === "pedestrian") {
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
-      ctx.lineWidth = Math.max(1, zoom);
-      for (let offset = -28; offset <= 28; offset += 12) {
-        ctx.beginPath();
-        ctx.moveTo(screen.x + offset * zoom, screen.y - 18 * zoom);
-        ctx.lineTo(screen.x + offset * zoom, screen.y + 18 * zoom);
-        ctx.stroke();
-      }
-    }
-
-    if (road.type.includes("premium")) {
-      ctx.strokeStyle = "rgba(79, 170, 209, 0.55)";
-      ctx.lineWidth = Math.max(1, 2 * zoom);
+    ctx.strokeStyle = "rgba(78, 52, 30, 0.24)";
+    ctx.lineWidth = Math.max(1, zoom);
+    for (let offset = -24; offset <= 24; offset += 8) {
       ctx.beginPath();
-      this.diamond(ctx, screen.x, screen.y);
+      ctx.moveTo(screen.x - 38 * zoom, screen.y + offset * zoom);
+      ctx.lineTo(screen.x + 38 * zoom, screen.y + (offset + 8) * zoom);
       ctx.stroke();
     }
-
     ctx.restore();
   }
 
-  /** Fallback geométrico si no está disponible el atlas de sprites. */
-  drawProceduralRoadShape(ctx, screen, road, roadManager) {
+  drawConnectionLines(ctx, screen, road, roadManager) {
     const bits = this.getRoadConnectionBits(road, roadManager);
     const zoom = this.camera.zoom;
+    const endpoints = this.getIsoLaneEndpoints(screen);
     ctx.save();
     ctx.beginPath();
     this.diamond(ctx, screen.x, screen.y);
     ctx.clip();
-    ctx.fillStyle = roadColor(road);
-    ctx.beginPath();
-    this.diamond(ctx, screen.x, screen.y);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.lineWidth = Math.max(2, 4 * zoom);
-    const center = [screen.x, screen.y];
-    const endpoints = this.getIsoLaneEndpoints(screen);
+    ctx.strokeStyle = laneColor(road);
+    ctx.lineWidth = laneWidth(road, zoom);
+    ctx.lineCap = "round";
     ctx.beginPath();
     for (const [direction, connected] of Object.entries(bits)) {
-      if (!connected) continue;
-      ctx.moveTo(center[0], center[1]);
+      if (!connected && !this.isOpenEdgeConnector(road, direction)) continue;
+      ctx.moveTo(screen.x, screen.y);
       ctx.lineTo(endpoints[direction][0], endpoints[direction][1]);
     }
     ctx.stroke();
+    if (road.type === "roundabout") {
+      ctx.strokeStyle = "rgba(255,255,255,0.72)";
+      ctx.lineWidth = Math.max(2, 3 * zoom);
+      ctx.beginPath();
+      ctx.ellipse(screen.x, screen.y, 20 * zoom, 10 * zoom, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
-  /** Calcula conexiones de cuatro direcciones compatibles con uniones y bordes. */
   getRoadConnectionBits(road, roadManager) {
     const bits = { north: false, east: false, south: false, west: false };
     const directions = {
@@ -283,14 +179,33 @@ export class Renderer {
     return bits;
   }
 
-  /** Visualiza desgaste y cierres sin ocultar el tipo de vía. */
+  getIsoLaneEndpoints(screen) {
+    const tileWidth = this.grid.tileWidth * this.camera.zoom;
+    const tileHeight = this.grid.tileHeight * this.camera.zoom;
+    return {
+      north: [screen.x, screen.y - tileHeight / 2],
+      east: [screen.x + tileWidth / 2, screen.y],
+      south: [screen.x, screen.y + tileHeight / 2],
+      west: [screen.x - tileWidth / 2, screen.y],
+    };
+  }
+
+  isOpenEdgeConnector(road, direction) {
+    return (
+      (direction === "north" && road.y === 0) ||
+      (direction === "east" && road.x === this.grid.width - 1) ||
+      (direction === "south" && road.y === this.grid.height - 1) ||
+      (direction === "west" && road.x === 0)
+    );
+  }
+
   drawRoadDamage(ctx, screen, road) {
     const zoom = this.camera.zoom;
     const damage = 1 - road.health / 100;
-    if (damage < 0.22 && !road.closedForRepair && !road.trafficClosed) return;
+    if (damage < 0.22 && !road.closedForRepair && !road.closedForConstruction && !road.closedForUpgrade && !road.trafficClosed) return;
     ctx.save();
     ctx.globalAlpha = Math.min(0.65, 0.18 + damage * 0.55);
-    ctx.strokeStyle = road.closedForRepair || road.trafficClosed ? "#ffd166" : "#2b1e1b";
+    ctx.strokeStyle = road.closedForRepair || road.closedForConstruction || road.closedForUpgrade || road.trafficClosed ? "#ffd166" : "#2b1e1b";
     ctx.lineWidth = Math.max(1, 1.3 * zoom);
     ctx.beginPath();
     for (let i = -1; i <= 1; i += 1) {
@@ -298,41 +213,213 @@ export class Renderer {
       ctx.lineTo(screen.x + 20 * zoom, screen.y + (i * 7 + 4) * zoom);
     }
     ctx.stroke();
-    if (road.closedForRepair || road.trafficClosed) {
-      ctx.globalAlpha = 0.92;
-      ctx.fillStyle = "#ffd166";
-      ctx.beginPath();
-      ctx.arc(screen.x, screen.y, 14 * zoom, 0, Math.PI * 2);
-      ctx.stroke();
-    }
     ctx.restore();
   }
 
-  /** Dibuja líneas finas de conexión para que rectas, curvas y cruces sean inequívocos. */
-  drawConnectionLines(ctx, screen, road, roadManager) {
-    const bits = this.getRoadConnectionBits(road, roadManager);
+  drawRoadMarkings(ctx, screen, road) {
     const zoom = this.camera.zoom;
-    const center = [screen.x, screen.y];
-    const endpoints = this.getIsoLaneEndpoints(screen);
-    ctx.save();
-    ctx.beginPath();
-    this.diamond(ctx, screen.x, screen.y);
-    ctx.clip();
-    ctx.strokeStyle = laneColor(road);
-    ctx.lineWidth = laneWidth(road, zoom);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    for (const [direction, connected] of Object.entries(bits)) {
-      if (!connected && !this.isOpenEdgeConnector(road, direction)) continue;
-      ctx.moveTo(center[0], center[1]);
-      ctx.lineTo(endpoints[direction][0], endpoints[direction][1]);
+    if (road.type === "oneWay") {
+      ctx.save();
+      ctx.font = `${Math.max(9, 12 * zoom)}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fillText({ east: ">", west: "<", north: "^", south: "v" }[road.direction] ?? ">", screen.x, screen.y);
+      ctx.restore();
     }
-    ctx.stroke();
-    if (road.type === "roundabout") {
-      ctx.strokeStyle = "rgba(255,255,255,0.7)";
-      ctx.lineWidth = Math.max(2, 3 * zoom);
+    if (this.viewMode === "speed") {
+      ctx.save();
+      ctx.fillStyle = "rgba(18, 28, 24, 0.82)";
       ctx.beginPath();
-      ctx.ellipse(screen.x, screen.y, 20 * zoom, 10 * zoom, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(25, 32, 30, 0.7)";
-      ctx.lineWidth = Math.max(2, 5 * zoom);
+      ctx.roundRect(screen.x - 14 * zoom, screen.y + 13 * zoom, 28 * zoom, 15 * zoom, 4 * zoom);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `${Math.max(8, 9 * zoom)}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(road.speedLimit), screen.x, screen.y + 21 * zoom);
+      ctx.restore();
+    }
+  }
+
+  drawTrafficLight(ctx, screen, road) {
+    const zoom = this.camera.zoom;
+    ctx.fillStyle = "#18211d";
+    ctx.fillRect(screen.x + 19 * zoom, screen.y - 34 * zoom, 5 * zoom, 24 * zoom);
+    ctx.fillStyle = road.trafficLight.phase === "green" ? "#35d47b" : "#e34b3f";
+    ctx.beginPath();
+    ctx.arc(screen.x + 22 * zoom, screen.y - 36 * zoom, 7 * zoom, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawBuilding(ctx, screen, building) {
+    const size = 128;
+    const col = building.kind % 3;
+    const row = Math.floor(building.kind / 3);
+    if (this.buildingSheet.complete && this.buildingSheet.naturalWidth) {
+      ctx.save();
+      ctx.globalAlpha = this.buildingsTransparent ? 0.38 : 1;
+      ctx.drawImage(
+        this.buildingSheet,
+        col * size,
+        row * size,
+        size,
+        size,
+        screen.x - 42 * this.camera.zoom,
+        screen.y - 78 * this.camera.zoom,
+        84 * this.camera.zoom,
+        98 * this.camera.zoom,
+      );
+      ctx.restore();
+      return;
+    }
+    ctx.fillStyle = "#6c8fb0";
+    ctx.fillRect(screen.x - 16, screen.y - 48, 32, 42);
+  }
+
+  drawVehicle(ctx, current, next, vehicle) {
+    const from = this.grid.isoToScreen(current.x, current.y, this.origin, this.camera.zoom);
+    const to = this.grid.isoToScreen(next.x, next.y, this.origin, this.camera.zoom);
+    const x = lerp(from.x, to.x, vehicle.progress);
+    const y = lerp(from.y, to.y, vehicle.progress);
+    ctx.fillStyle = vehicle.color;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.26)";
+    ctx.beginPath();
+    ctx.ellipse(x, y - 5 * this.camera.zoom, 8 * this.camera.zoom, 4 * this.camera.zoom, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  diamond(ctx, x, y) {
+    const tileWidth = this.grid.tileWidth * this.camera.zoom;
+    const tileHeight = this.grid.tileHeight * this.camera.zoom;
+    ctx.moveTo(x, y - tileHeight / 2);
+    ctx.lineTo(x + tileWidth / 2, y);
+    ctx.lineTo(x, y + tileHeight / 2);
+    ctx.lineTo(x - tileWidth / 2, y);
+    ctx.closePath();
+  }
+}
+
+function isSelected(selection, x, y) {
+  if (!selection) return false;
+  if (Array.isArray(selection.cells)) return selection.cells.some((cell) => cell.x === x && cell.y === y);
+  return selection.x === x && selection.y === y;
+}
+
+function roadSurfaceColor(road) {
+  if (road.closedForRepair || road.closedForConstruction || road.closedForUpgrade) return "#776949";
+  if (road.health < 20) return "#694847";
+  return {
+    dirt: "#80613f",
+    gravelRoad: "#80786c",
+    concretePath: "#9fa39c",
+    stonePath: "#7f817a",
+    pedestrian: "#8f8c77",
+    oneWay: "#59636b",
+    twoWay: "#687179",
+    cityRoad: "#616970",
+    premiumRoad: "#415a72",
+    avenue: "#5d6870",
+    boulevard: "#5f7568",
+    premiumAvenue: "#426575",
+    expressway: "#4f5963",
+    highway: "#4a545e",
+    megaHighway: "#444b5c",
+    roundabout: "#58656d",
+  }[road.type] ?? "#747d83";
+}
+
+function laneColor(road) {
+  if (road.type === "dirt") return "rgba(245, 221, 174, 0.32)";
+  if (road.type === "pedestrian" || road.type === "stonePath") return "rgba(255, 255, 255, 0.24)";
+  if (road.type.includes("premium")) return "rgba(210, 242, 255, 0.72)";
+  if (road.type === "avenue" || road.type === "boulevard") return "rgba(255, 224, 105, 0.72)";
+  return "rgba(255, 255, 255, 0.62)";
+}
+
+function laneWidth(road, zoom) {
+  if (["expressway", "highway", "megaHighway"].includes(road.type)) return Math.max(4, 6 * zoom);
+  if (["avenue", "boulevard", "premiumAvenue"].includes(road.type)) return Math.max(3, 5 * zoom);
+  if (road.type === "pedestrian") return Math.max(2, 3 * zoom);
+  return Math.max(2, 3 * zoom);
+}
+
+export function roadViewColor(road, viewMode = "normal") {
+  if (viewMode === "traffic") {
+    const intensity = Math.min(1, road.traffic / Math.max(1, ROAD_TYPES[road.type]?.capacity ?? 1));
+    return heatColor(intensity);
+  }
+  if (viewMode === "health") return healthColor(road.health, road.closedForRepair || road.closedForConstruction || road.closedForUpgrade || road.trafficClosed);
+  if (viewMode === "speed") return speedColor(road.speedLimit);
+  if (viewMode === "type") return typeColor(road.type);
+  return roadSurfaceColor(road);
+}
+
+export function heatColor(intensity) {
+  return colorScale(intensity, [
+    [0, 94, 203, 124],
+    [0.25, 180, 222, 92],
+    [0.5, 246, 205, 77],
+    [0.75, 236, 126, 55],
+    [1, 198, 54, 57],
+  ]);
+}
+
+function healthColor(health, blocked) {
+  if (blocked) return "#f1c453";
+  return colorScale(1 - health / 100, [
+    [0, 62, 166, 119],
+    [0.35, 139, 196, 91],
+    [0.58, 232, 185, 68],
+    [0.8, 219, 110, 54],
+    [1, 151, 55, 60],
+  ]);
+}
+
+function speedColor(speedLimit) {
+  return { 20: "#8f6a44", 30: "#6f8f59", 50: "#4f7fa6", 80: "#7254a8" }[speedLimit] ?? "#747d83";
+}
+
+function typeColor(type) {
+  return {
+    dirt: "#8a6b42",
+    gravelRoad: "#7f786b",
+    concretePath: "#a7aba2",
+    stonePath: "#797b73",
+    pedestrian: "#85a56c",
+    oneWay: "#5f6e7d",
+    twoWay: "#6a747d",
+    cityRoad: "#66717a",
+    premiumRoad: "#326f9e",
+    avenue: "#5f867b",
+    boulevard: "#5f9367",
+    premiumAvenue: "#2f9bb3",
+    expressway: "#626983",
+    highway: "#5c5f74",
+    megaHighway: "#505572",
+    roundabout: "#8a6db0",
+  }[type] ?? "#747d83";
+}
+
+function colorScale(value, stops) {
+  const clamped = Math.max(0, Math.min(1, value));
+  for (let index = 1; index < stops.length; index += 1) {
+    const previous = stops[index - 1];
+    const next = stops[index];
+    if (clamped <= next[0]) {
+      const local = (clamped - previous[0]) / Math.max(0.001, next[0] - previous[0]);
+      return `rgb(${Math.round(lerp(previous[1], next[1], local))}, ${Math.round(lerp(previous[2], next[2], local))}, ${Math.round(lerp(previous[3], next[3], local))})`;
+    }
+  }
+  const last = stops[stops.length - 1];
+  return `rgb(${last[1]}, ${last[2]}, ${last[3]})`;
+}
+
+function getCanvasBackground() {
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "#121a17" : "#e9f1ed";
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
