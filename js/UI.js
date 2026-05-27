@@ -1,4 +1,5 @@
 import { ROAD_TYPES, SPEED_LIMITS } from "./RoadManager.js";
+import { getRoadFootprintCost } from "./RoadFootprints.js";
 
 const MESSAGES = {
   es: {
@@ -266,7 +267,7 @@ export class UI {
       <section class="statement" data-statement aria-live="polite"></section>
       <section class="hud__tools" aria-label="${t("tool")}">
         <div class="tool-palette">
-          ${ROAD_TOOL_ORDER.map((tool) => this.toolButton(tool, t(tool), ROAD_TYPES[tool].buildCost)).join("")}
+          ${ROAD_TOOL_ORDER.map((tool) => this.toolButton(tool, t(tool), getRoadFootprintCost(tool))).join("")}
         </div>
         <div class="hud__grid hud__grid--compact">
           ${this.toolButton("light", t("light"))}
@@ -486,5 +487,5 @@ export class UI {
 }
 
 export function getRoadCost(type) {
-  return ROAD_TYPES[type]?.buildCost ?? 0;
+  return getRoadFootprintCost(type);
 }

@@ -8,7 +8,9 @@ import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
 import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction, startRoadUpgrade, updateRoadWorks } from "./RoadUpgrades.js";
+import { buildRoadFootprint, canBuildRoadFootprint, getRoadFootprintCost, makeFootprintSelection } from "./RoadFootprints.js";
 import { SIMULATION_CONFIG } from "./SimulationConfig.js";
+import { runSecretCommand } from "./SecretCommands.js";
 
 installRoadSkins(Renderer);
 installCityGrowthPolicy(RoadManager);
@@ -52,6 +54,7 @@ const ui = new UI(hud, {
   },
   onToolChange: (tool) => {
     state.tool = tool;
+    state.hoverCell = state.hoverCell ? makeHoverSelection(state.hoverCell.x, state.hoverCell.y) : null;
   },
   onSpeedLimitChange: (speedLimit) => {
     state.speedLimit = speedLimit;
@@ -105,6 +108,7 @@ canvas.addEventListener("pointerup", handlePointerUp);
 canvas.addEventListener("pointercancel", handlePointerUp);
 canvas.addEventListener("wheel", handleWheel, { passive: false });
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+window.addEventListener("keydown", handleSecretCommandShortcut);
 requestAnimationFrame(loop);
 
 /** Orquesta update/draw, economía, degradación y crecimiento urbano. */
@@ -165,6 +169,18 @@ function decayIncidentPressure(deltaSeconds) {
   state.blockedRouteNoticeTimer = Math.max(0, state.blockedRouteNoticeTimer - deltaSeconds);
 }
 
+function handleSecretCommandShortcut(event) {
+  if (event.key.toLowerCase() !== "q" || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target;
+  if (target?.matches?.("input, textarea, select, button")) return;
+  if (!window.confirm("¿Quieres introducir un truco?")) return;
+
+  const code = window.prompt("Código de truco");
+  if (code === null) return;
+  const applied = runSecretCommand(code, { state, grid, ui });
+  if (!applied) ui.showNotice("Truco no reconocido");
+}
+
 /** Inicia pan de cámara o selección de celda según el gesto del jugador. */
 function handlePointerDown(event) {
   canvas.setPointerCapture(event.pointerId);
@@ -205,7 +221,7 @@ function handleMapAction(event) {
   if (!state.running) return;
   const cell = getPointerCell(event);
   if (!grid.isInside(cell.x, cell.y)) return;
-  state.selectedCell = cell;
+  state.selectedCell = makeHoverSelection(cell.x, cell.y);
 
   if (state.tool === "demolish") {
     const building = grid.demolishBuilding(cell.x, cell.y);
@@ -240,10 +256,14 @@ function handleMapAction(event) {
   if (state.tool in ROAD_TYPES) {
     const road = roadManager.getRoad(cell.x, cell.y);
     if (!road) {
-      const cost = getRoadCost(state.tool);
+      const cost = getRoadFootprintCost(state.tool);
+      if (!canBuildRoadFootprint(grid, roadManager, cell.x, cell.y, state.tool)) {
+        ui.showNotice("No cabe esta carretera aquí");
+        return;
+      }
       if (state.budget >= cost) {
-        const builtRoad = roadManager.buildRoad(cell.x, cell.y, state.tool);
-        if (builtRoad) startRoadConstruction(roadManager, builtRoad);
+        const builtRoads = buildRoadFootprint(roadManager, cell.x, cell.y, state.tool);
+        for (const builtRoad of builtRoads) startRoadConstruction(roadManager, builtRoad);
         state.budget -= cost;
         ui.showMoney(-cost, event.clientX, event.clientY);
       } else {
@@ -284,7 +304,11 @@ function handleMapAction(event) {
 
 function updateHoverCell(event) {
   const cell = getPointerCell(event);
-  state.hoverCell = grid.isInside(cell.x, cell.y) ? cell : null;
+  state.hoverCell = grid.isInside(cell.x, cell.y) ? makeHoverSelection(cell.x, cell.y) : null;
+}
+
+function makeHoverSelection(x, y) {
+  return state.tool in ROAD_TYPES ? makeFootprintSelection(x, y, state.tool) : { x, y };
 }
 
 function getPointerCell(event) {
