@@ -3,6 +3,7 @@ import { ROAD_TYPES, RoadManager } from "./RoadManager.js";
 import { TrafficSystem } from "./TrafficSystem.js";
 import { Renderer } from "./Renderer.js";
 import { installRoadSkins } from "./RoadSkins.js";
+import { installCityGrowthPolicy } from "./CityGrowthPolicy.js";
 import { UI, getRoadCost } from "./UI.js";
 import { Storage } from "./Storage.js";
 import { applyDiscontentPenalty, calculateDiscontent } from "./Discontent.js";
@@ -10,6 +11,7 @@ import { getActiveUpgradeMonthlyCost, getRoadUpgradeCost, startRoadConstruction,
 import { SIMULATION_CONFIG } from "./SimulationConfig.js";
 
 installRoadSkins(Renderer);
+installCityGrowthPolicy(RoadManager);
 
 const canvas = document.querySelector("#game");
 const hud = document.querySelector("#hud");
@@ -293,15 +295,13 @@ function getPointerCell(event) {
   return grid.screenToIso(screenX, screenY, renderer.origin, renderer.camera.zoom);
 }
 
-/** Crea una red mínima para que el simulador tenga tráfico desde el primer frame. */
+/** Crea una red mínima inicial con la peor carretera y sin semáforos. */
 function seedStarterCity() {
-  for (let x = 0; x <= 12; x += 1) roadManager.buildRoad(x, 8, x < 4 ? "highway" : "twoWay");
-  for (let y = 5; y <= 12; y += 1) roadManager.buildRoad(8, y, "twoWay");
-  roadManager.buildRoad(8, 8, "roundabout");
-  roadManager.placeTrafficLight(8, 8);
-  grid.setBuilding(4, 7, { kind: 0, demand: 3, createdAt: performance.now() });
-  grid.setBuilding(7, 7, { kind: 1, demand: 4, createdAt: performance.now() });
-  grid.setBuilding(9, 9, { kind: 2, demand: 3, createdAt: performance.now() });
+  for (let x = 0; x <= 12; x += 1) roadManager.buildRoad(x, 8, "dirt");
+  for (let y = 5; y <= 12; y += 1) roadManager.buildRoad(8, y, "dirt");
+  grid.setBuilding(4, 7, { kind: 0, demand: 2, createdAt: performance.now() });
+  grid.setBuilding(7, 7, { kind: 1, demand: 2, createdAt: performance.now() });
+  grid.setBuilding(9, 9, { kind: 2, demand: 2, createdAt: performance.now() });
 }
 
 /** Limpia partida, preservando el mapa grande y una ciudad semilla. */
