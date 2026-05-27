@@ -12,6 +12,13 @@ export const SIMULATION_CONFIG = {
     initialDensity: 0.18,
     protectedStarterRadius: 2,
   },
+  trafficDemand: {
+    housingForFullInternalTraffic: 360,
+    housingForFullExternalTraffic: 720,
+    internalSpawnIntervalSeconds: 0.55,
+    externalSpawnIntervalSeconds: 0.22,
+    minimumExternalTrafficFactor: 0.08,
+  },
   trafficIncidents: {
     detourDiscontent: 0.018,
     blockedRouteDiscontent: 0.18,
