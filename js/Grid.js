@@ -26,7 +26,7 @@ export class Grid {
     if (!this.isInside(x, y)) return null;
     const key = this.key(x, y);
     if (!this.cells.has(key)) {
-      this.cells.set(key, { x, y, road: null, building: null });
+      this.cells.set(key, { x, y, road: null, building: null, tree: null });
     }
     return this.cells.get(key);
   }
@@ -37,6 +37,7 @@ export class Grid {
     if (cell) {
       cell.road = road;
       cell.building = null;
+      cell.tree = null;
     }
   }
 
@@ -52,10 +53,10 @@ export class Grid {
     if (cell) cell.building = null;
   }
 
-  /** Añade edificios solo en celdas libres para no bloquear carreteras. */
+  /** Añade edificios solo en celdas libres para no bloquear carreteras ni árboles. */
   setBuilding(x, y, building) {
     const cell = this.getCell(x, y);
-    if (cell && !cell.road && this.hasAdjacentRoad(x, y)) cell.building = building;
+    if (cell && !cell.road && !cell.tree && this.hasAdjacentRoad(x, y)) cell.building = building;
   }
 
   /** Demuele un edificio existente y devuelve su demanda perdida. */
