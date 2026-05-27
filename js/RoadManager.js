@@ -175,6 +175,7 @@ export class RoadManager extends EventTarget {
       type,
       health: 100,
       traffic: 0,
+      trafficWear: 0,
       closedForRepair: false,
       trafficClosed: false,
       speedLimit: ROAD_TYPES[type].defaultSpeedLimit,
@@ -269,24 +270,42 @@ export class RoadManager extends EventTarget {
   update(deltaSeconds, trafficCounts) {
     for (const road of this.roads.values()) {
       road.traffic = trafficCounts.get(this.grid.key(road.x, road.y)) ?? 0;
+      road.trafficWear = road.trafficWear ?? 0;
       this.updateTrafficLight(road, deltaSeconds);
 
       if (road.closedForRepair) {
         road.health = Math.min(100, road.health + deltaSeconds * SIMULATION_CONFIG.roadWorks.repairHealthPerSecond);
         road.traffic = 0;
+        road.trafficWear = Math.max(0, road.trafficWear - deltaSeconds * SIMULATION_CONFIG.roadWear.accumulatedTrafficDecayPerSecond);
         if (road.health >= 100) {
           road.closedForRepair = false;
+          road.trafficWear = 0;
           this.dispatchNetworkChanged("repair-completed", road);
         }
         continue;
       }
 
-      if (road.traffic > 0) {
-        const pressure = road.traffic / Math.max(1, ROAD_TYPES[road.type].capacity);
-        road.health = Math.max(0, road.health - deltaSeconds * (0.035 + pressure * 0.12));
-      }
+      this.applyTrafficWear(road, deltaSeconds);
     }
     this.updateBuildingPressure(deltaSeconds);
+  }
+
+  applyTrafficWear(road, deltaSeconds) {
+    const config = SIMULATION_CONFIG.roadWear;
+    if (road.traffic <= 0) {
+      road.trafficWear = Math.max(0, road.trafficWear - deltaSeconds * config.accumulatedTrafficDecayPerSecond);
+      return;
+    }
+
+    const capacity = Math.max(1, ROAD_TYPES[road.type].capacity);
+    const pressure = road.traffic / capacity;
+    road.trafficWear += road.traffic * deltaSeconds;
+    const accumulatedPressure = road.trafficWear / capacity;
+    const wear =
+      config.baseWearPerSecondWithTraffic +
+      config.wearPerVehicleSecond * road.traffic +
+      config.overloadWearMultiplier * pressure * accumulatedPressure;
+    road.health = Math.max(0, road.health - deltaSeconds * wear);
   }
 
   /** Calcula velocidad real combinando estado, reparación, señales y congestión. */
